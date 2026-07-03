@@ -42,6 +42,7 @@ CORS(app,
          'http://127.0.0.1:5001',
          'http://127.0.0.1:5173',
             'http://localhost:5174',
+            'https://backup-capstone-mbq6.onrender.com'
      ],
      supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization', 'Accept'],
