@@ -3,7 +3,7 @@ import React, { createContext, useState, useContext, useEffect, useRef } from 'r
 import axios from 'axios';
 
 const AuthContext = createContext();
-const API_URL = 'http://localhost:5001/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001' || 'https://backup-capstone-mbq6.onrender.com';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
