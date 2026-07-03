@@ -15,7 +15,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/v1/auth')
 # Google OAuth Configuration - Load from environment variables
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:5001/api/v1/auth/google/callback')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'https://backup-capstone-mbq6.onrender.com/api/v1/auth/google/callback')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production')
 
 # Check if credentials are set
