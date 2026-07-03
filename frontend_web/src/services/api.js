@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 // Use Vite's import.meta.env for Vite projects
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1' || 'https://capstone-be-yxzd.onrender.com/api/v1';
 
 // Main API instance
 const api = axios.create({

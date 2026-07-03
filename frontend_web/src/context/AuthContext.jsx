@@ -3,7 +3,7 @@ import React, { createContext, useState, useContext, useEffect, useRef } from 'r
 import axios from 'axios';
 
 const AuthContext = createContext();
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001' || 'https://backup-capstone-mbq6.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001' || 'https://capstone-be-yxzd.onrender.com';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -46,14 +46,10 @@ export const AuthProvider = ({ children }) => {
     }
   }, []); // Empty dependency - only run once
 
-  const login = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/auth/google/login`);
-      window.location.href = response.data.auth_url;
-    } catch (error) {
-      console.error('Login failed:', error);
-    }
-  };
+ const login = () => {
+  window.location.href =
+    `${API_URL}/api/v1/auth/google/login`;
+};
 
   const logout = () => {
     console.log('🔍 Logging out...');

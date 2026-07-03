@@ -8,6 +8,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [file, setFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
@@ -51,6 +52,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       
       setFile(selectedFile);
       setError('');
+      setSuccess(false);
     }
   };
 
@@ -69,37 +71,77 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
 
     setLoading(true);
     setError('');
+    setSuccess(false);
     setUploadProgress(0);
 
     try {
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return prev + 10;
-        });
-      }, 200);
+      // Create FormData for file upload
+      const uploadData = new FormData();
+      uploadData.append('patient_id', formData.patient_id);
+      uploadData.append('doctor_id', user.id);
+      uploadData.append('recording_date', formData.recording_date);
+      uploadData.append('notes', formData.notes);
+      uploadData.append('file', file);
 
-      const response = await databaseApi.uploadRecording({
-        patient_id: formData.patient_id,
-        doctor_id: user.id,
-        recording_date: formData.recording_date,
-        notes: formData.notes,
-        file: file
+      // Use XMLHttpRequest for actual progress tracking
+      const response = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(progress);
+            console.log(`Upload progress: ${progress}%`);
+          }
+        });
+
+        // Handle response
+        xhr.addEventListener('load', () => {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(response);
+            } else {
+              reject(new Error(response.error || 'Upload failed'));
+            }
+          } catch (e) {
+            reject(new Error('Failed to parse server response'));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error occurred'));
+        });
+
+        xhr.addEventListener('abort', () => {
+          reject(new Error('Upload was cancelled'));
+        });
+
+        // Open and send the request
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+        xhr.open('POST', `${apiUrl}/api/v1/database/recordings`);
+        xhr.withCredentials = true;
+        
+        // Add authorization header if token exists
+        const token = localStorage.getItem('token');
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        
+        xhr.send(uploadData);
       });
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (response.success) {
-        onUploadComplete();
-        onClose();
-        // Reset form
+      console.log('Upload response:', response);
+      
+      // Check if upload was successful
+      if (response && response.success !== false) {
+        setUploadProgress(100);
+        setSuccess(true);
+        setError('');
+        
+        // Reset form after successful upload
         setFile(null);
-        setUploadProgress(0);
         setFormData({
           patient_id: preSelectedPatient?.id || '',
           recording_date: new Date().toISOString().split('T')[0],
@@ -108,31 +150,61 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+        
+        // Notify parent component
+        if (onUploadComplete) {
+          onUploadComplete();
+        }
+        
+        // Close modal after delay
+        setTimeout(() => {
+          onClose();
+        }, 1500);
       } else {
-        setError(response.error || 'Failed to upload recording');
+        setError(response?.error || 'Failed to upload recording');
         setUploadProgress(0);
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      console.error('Upload error:', err);
+      setError(err.message || 'An error occurred. Please try again.');
       setUploadProgress(0);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleClose = () => {
+    // Reset state when closing
+    setError('');
+    setSuccess(false);
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content upload-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Upload Heart Sound Recording</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={handleClose}>×</button>
         </div>
 
         {error && (
           <div className="modal-error">
+            <span className="error-icon">!</span>
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="modal-success">
+            <span className="success-icon">✓</span>
+            Recording uploaded successfully!
           </div>
         )}
 
@@ -182,6 +254,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
                   accept=".wav,.mp3,.ogg,audio/*"
                   required
                   className="file-input"
+                  disabled={loading || success}
                 />
                 <div className="file-upload-area">
                   {file ? (
@@ -201,7 +274,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
               </div>
             </div>
 
-            {uploadProgress > 0 && uploadProgress < 100 && (
+            {(uploadProgress > 0 || loading) && (
               <div className="upload-progress">
                 <div className="progress-bar">
                   <div 
@@ -209,13 +282,9 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
-                <span className="progress-text">{uploadProgress}% uploaded</span>
-              </div>
-            )}
-
-            {uploadProgress === 100 && (
-              <div className="upload-success">
-                <span>✓ Upload complete!</span>
+                <span className="progress-text">
+                  {uploadProgress === 100 ? 'Upload complete!' : `${uploadProgress}% uploaded`}
+                </span>
               </div>
             )}
 
@@ -227,20 +296,26 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
                 onChange={handleChange}
                 rows="2"
                 placeholder="Add any notes about this recording..."
+                disabled={loading || success}
               />
             </div>
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <button 
+              type="button" 
+              className="btn-secondary" 
+              onClick={handleClose}
+              disabled={loading}
+            >
               Cancel
             </button>
             <button 
               type="submit" 
               className="btn-primary" 
-              disabled={loading || !file || !formData.patient_id}
+              disabled={loading || !file || !formData.patient_id || success}
             >
-              {loading ? 'Uploading...' : 'Upload Recording'}
+              {loading ? 'Uploading...' : success ? 'Uploaded!' : 'Upload Recording'}
             </button>
           </div>
         </form>
