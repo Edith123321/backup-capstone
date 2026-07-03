@@ -11,3 +11,4 @@ soundfile>=0.12.1
 pyJwt
 dotenv
 gunicorn
+flask_session
