@@ -24,7 +24,7 @@ if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
     print("Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET")
     print("For development, you can set them in a .env file or export them.")
 
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5174')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://backup-capstone-mbq6.onrender.com')
 def token_required(f):
     """Decorator to verify JWT token"""
     @wraps(f)
