@@ -1,0 +1,23 @@
+{
+  "Age": "Child",
+  "Sex": "Female",
+  "Height": "116.0",
+  "Weight": "19.4",
+  "Pregnancy status": "False",
+  "Murmur": "Present",
+  "Murmur locations": "TV",
+  "Most audible location": "TV",
+  "Systolic murmur timing": "Early-systolic",
+  "Systolic murmur shape": "Plateau",
+  "Systolic murmur grading": "I/VI",
+  "Systolic murmur pitch": "Low",
+  "Systolic murmur quality": "Blowing",
+  "Diastolic murmur timing": "nan",
+  "Diastolic murmur shape": "nan",
+  "Diastolic murmur grading": "nan",
+  "Diastolic murmur pitch": "nan",
+  "Diastolic murmur quality": "nan",
+  "Outcome": "Abnormal",
+  "Campaign": "CC2015",
+  "Additional ID": "nan"
+}

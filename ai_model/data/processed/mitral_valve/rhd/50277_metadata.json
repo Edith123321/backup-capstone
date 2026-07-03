@@ -1,0 +1,23 @@
+{
+  "Age": "Adolescent",
+  "Sex": "Male",
+  "Height": "148.0",
+  "Weight": "35.2",
+  "Pregnancy status": "False",
+  "Murmur": "Present",
+  "Murmur locations": "AV+MV+PV+TV",
+  "Most audible location": "PV",
+  "Systolic murmur timing": "Holosystolic",
+  "Systolic murmur shape": "Diamond",
+  "Systolic murmur grading": "III/VI",
+  "Systolic murmur pitch": "Medium",
+  "Systolic murmur quality": "Harsh",
+  "Diastolic murmur timing": "Early-diastolic",
+  "Diastolic murmur shape": "Decrescendo",
+  "Diastolic murmur grading": "III/IV",
+  "Diastolic murmur pitch": "Medium",
+  "Diastolic murmur quality": "Blowing",
+  "Outcome": "Abnormal",
+  "Campaign": "CC2014",
+  "Additional ID": "nan"
+}

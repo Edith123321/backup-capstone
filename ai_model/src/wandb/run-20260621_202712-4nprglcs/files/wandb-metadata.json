@@ -1,0 +1,38 @@
+{
+  "os": "macOS-26.5.1-arm64-arm-64bit",
+  "python": "CPython 3.12.12",
+  "startedAt": "2026-06-21T18:27:12.668080Z",
+  "program": "/Users/sola/capstone/ai_model/src/model_training.ipynb",
+  "codePath": "/Users/sola/capstone/ai_model/src/model_training.ipynb",
+  "codePathLocal": "model_training.ipynb",
+  "git": {
+    "remote": "https://github.com/Edith123321/capstone.git",
+    "commit": "b889228e2bb90472139bb01cfd5ae25fe18bc626"
+  },
+  "email": "e.githinji1@alustudent.com",
+  "root": "/Users/sola/capstone/ai_model/src",
+  "host": "192.168.1.68",
+  "executable": "/Users/sola/miniforge3/bin/python",
+  "cpu_count": 10,
+  "cpu_count_logical": 10,
+  "disk": {
+    "/": {
+      "total": "245107195904",
+      "used": "223733141504"
+    }
+  },
+  "memory": {
+    "total": "17179869184"
+  },
+  "apple": {
+    "name": "Apple M4",
+    "ecpuCores": 6,
+    "pcpuCores": 4,
+    "gpuCores": 8,
+    "memoryGb": 16,
+    "swapTotalBytes": "12884901888",
+    "ramTotalBytes": "17179869184",
+    "macModel": "Mac16,12"
+  },
+  "writerId": "rkaxi0icecce7d11vpo9es6fi7lqdesh"
+}
