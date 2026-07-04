@@ -23,7 +23,7 @@ app = Flask(__name__)
 
 # Configure CORS
 CORS(app, 
-     origins=['http://localhost:3000', 'http://localhost:5001', 'http://localhost:5173', 'http://localhost:5174'],
+     origins=[ 'https://backup-capstone-mbq6.onrender.com', 'https://capstone-be-yxzd.onrender.com'],
      supports_credentials=True)
 
 # Register the blueprint
