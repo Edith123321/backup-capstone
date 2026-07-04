@@ -9,69 +9,38 @@ const AuthCallback = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    console.log('🔄 AuthCallback component mounted');
-    
-    // Get the full URL
-    const fullUrl = window.location.href;
-    console.log('📍 Full URL:', fullUrl);
-    
-    // Parse URL parameters
-    const params = new URLSearchParams(window.location.search);
-    
-    // Get token and user data
-    const token = params.get('token');
-    const userDataParam = params.get('user');
-    
-    console.log('🔑 Token found:', !!token);
-    console.log('👤 User data param found:', !!userDataParam);
-    
-    if (token && userDataParam) {
-      try {
-        // Decode the user data (it's URL encoded)
-        const userData = decodeURIComponent(userDataParam);
-        console.log('📝 Decoded user data string:', userData);
-        
-        // Parse the JSON
-        const user = JSON.parse(userData);
-        console.log('✅ Parsed user object:', user);
-        
-        // Save to localStorage
-        localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(user));
-        console.log('💾 Saved to localStorage');
-        
-        // Update auth context
-        handleAuthCallback(token, user);
-        console.log('🔄 Auth context updated');
-        
-        // Redirect to dashboard
-        console.log('🚀 Redirecting to dashboard...');
-        navigate('/dashboard');
-        
-      } catch (error) {
-        console.error('❌ Error processing auth data:', error);
-        console.error('Raw user data:', userDataParam);
-        setError(`Failed to process authentication: ${error.message}`);
-      }
-    } else {
-      console.error('❌ Missing token or user data');
-      console.log('Token:', token);
-      console.log('User data param:', userDataParam);
-      setError('No authentication token received. Please try again.');
-      
-      // If there's an error parameter, show it
-      const errorParam = params.get('error');
-      if (errorParam) {
-        setError(decodeURIComponent(errorParam));
-      }
-      
-      // Redirect to login after 3 seconds
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000);
-    }
-  }, [handleAuthCallback, navigate]);
+  const params = new URLSearchParams(window.location.search);
 
+  const token = params.get('token');
+  const userDataParam = params.get('user');
+
+  if (!token || !userDataParam) {
+    setError('Missing authentication data');
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 3000);
+    return;
+  }
+
+  try {
+    const user = JSON.parse(decodeURIComponent(userDataParam));
+
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+
+    handleAuthCallback(token, user);
+
+    // IMPORTANT: use hard redirect
+    window.location.href = window.location.origin + '/dashboard';
+
+  } catch (error) {
+    setError(`Auth failed: ${error.message}`);
+
+    setTimeout(() => {
+      window.location.href = '/login';
+    }, 3000);
+  }
+}, [handleAuthCallback]);
   if (error) {
     return (
       <div style={{ 
