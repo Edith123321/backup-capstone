@@ -8,9 +8,7 @@ import React, {
 
 const AuthContext = createContext();
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  'https://capstone-be-yxzd.onrender.com/api/v1';
+ const API_BASE_URL = 'https://capstone-be-yxzd.onrender.com/api/v1';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -41,10 +39,15 @@ export const AuthProvider = ({ children }) => {
   // =====================
   // LOGIN
   // =====================
-  const login = () => {
-    window.location.href = `${API_BASE_URL}/auth/google/login`;
-  };
 
+
+const login = () => {
+  const url = `${API_BASE_URL}/auth/google/login`;
+
+  console.log("🚀 Redirecting to backend login:", url);
+
+  window.location.assign(url);
+};
   // =====================
   // LOGOUT
   // =====================
