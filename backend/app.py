@@ -101,8 +101,8 @@ def index():
         "endpoints": {
             "auth_login": "/api/v1/auth/google/login",
             "auth_callback": "/api/v1/auth/google/callback",
-            "patients": "/api/v1/api/v1/database/patients",
-            "triage": "/api/v1/api/v1/database/triage",
+            "patients": "/database/patients",
+            "triage": "/database/triage",
         }
     })
 @app.route("/api/v1/debug/env", methods=["GET"])
