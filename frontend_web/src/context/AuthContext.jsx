@@ -8,7 +8,7 @@ import React, {
 
 const AuthContext = createContext();
 
- const API_baseURL= "https://capstone-be-yxzd.onrender.com";
+ const API_baseURL = "https://capstone-be-yxzd.onrender.com";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
 
 
 const login = () => {
-  const url = `${API_BASE_URL}/auth/google/login`;
+  const url = `${API_baseURL}/api/v1/auth/google/login`;
 
   console.log("🚀 Redirecting to backend login:", url);
 
