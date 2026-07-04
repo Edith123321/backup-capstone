@@ -1,7 +1,7 @@
 // frontend_web/src/services/auth.js
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1' || 'https://capstone-be-yxzd.onrender.com/api/v1';
+const API_URL = process.env.REACT_APP_API_URL ||'https://capstone-be-yxzd.onrender.com/api/v1';
 
 // Axios instance with auth header
 const authApi = axios.create({
