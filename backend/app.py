@@ -1,153 +1,139 @@
-import os
-import sys
-import logging
-from dotenv import load_dotenv
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_session import Session
+from dotenv import load_dotenv
+import os
+import sys
 
-# =========================
-# LOAD ENV VARIABLES FIRST
-# =========================
+# Load environment variables
 load_dotenv()
 
-# =========================
-# LOGGING
-# =========================
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# =========================
-# PATH SETUP
-# =========================
+# Add backend to path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-# =========================
-# FLASK APP INIT
-# =========================
-app = Flask(__name__)
-
-# =========================
-# CONFIG
-# =========================
-app.config["SECRET_KEY"] = os.environ.get(
-    "SECRET_KEY",
-    "dev-secret-key-change-in-production"
-)
-
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_COOKIE_SECURE"] = False
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-
-Session(app)
-
-# =========================
-# FRONTEND + CORS
-# =========================
-FRONTEND_URL = os.environ.get("FRONTEND_URL")
-
-allowed_origins = [
-  "https://backup-capstone-mbq6.onrender.com",
-    "https://capstone-be-yxzd.onrender.com"
-]
-
-# add frontend from env if set
-if FRONTEND_URL:
-    allowed_origins.append(FRONTEND_URL)
-
-CORS(app,
-     origins=allowed_origins,
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization"],
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-)
-
-logger.info(f"🌍 Allowed origins: {allowed_origins}")
-
-# =========================
-# IMPORT BLUEPRINTS (AFTER ENV LOAD)
-# =========================
+# Import blueprints
 from api.v1.screening.heart_sound import heart_sound_bp
 from api.v1.screening.database_routes import database_bp
 from api.v1.screening.validation import validation_bp
 from api.v1.auth.google_auth import auth_bp
 from api.v1.auth.test_auth import test_auth_bp
 
-# =========================
-# REGISTER BLUEPRINTS
-# =========================
+# Initialize app
+app = Flask(__name__)
+
+# Session configuration
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Initialize session
+Session(app)
+
+# ============ CORS CONFIGURATION ============
+# Get allowed origins from environment or use defaults
+allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5001,http://localhost:5173')
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+
+# Add all possible frontend URLs
+frontend_urls = [
+    'https://saka-frontend.onrender.com',
+    'https://backup-capstone-mbq6.onrender.com',  # Your current frontend
+    'https://capstone-frontend.onrender.com',     # Alternative frontend
+]
+
+for url in frontend_urls:
+    if url not in allowed_origins:
+        allowed_origins.append(url)
+
+# Also add your backend URL for self-requests
+backend_url = 'https://capstone-be-yxzd.onrender.com'
+if backend_url not in allowed_origins:
+    allowed_origins.append(backend_url)
+
+print("=" * 50)
+print("CORS Allowed Origins:")
+for origin in allowed_origins:
+    print(f"  - {origin}")
+print("=" * 50)
+
+CORS(app, 
+     origins=allowed_origins,
+     supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+     expose_headers=['Content-Type', 'Authorization'])
+
+# Register blueprints
 app.register_blueprint(heart_sound_bp)
 app.register_blueprint(database_bp)
 app.register_blueprint(validation_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(test_auth_bp)
 
-logger.info("✅ All blueprints registered")
-
-# =========================
-# ROOT ROUTE
-# =========================
-@app.route("/", methods=["GET"])
+@app.route('/', methods=['GET'])
 def index():
     return jsonify({
-        "name": "SAKA Backend API",
-        "status": "running",
-        "endpoints": {
-            "auth_login": "/api/v1/auth/google/login",
-            "auth_callback": "/api/v1/auth/google/callback",
-            "patients": "/database/patients",
-            "triage": "/database/triage",
+        'name': 'Heart Sound Classifier API',
+        'version': '1.0.0',
+        'status': 'running',
+        'allowed_origins': allowed_origins,
+        'endpoints': {
+            'health': '/api/v1/screening/health',
+            'predict': '/api/v1/screening/predict',
+            'validate': '/api/v1/screening/validate',
+            'patients': '/api/v1/database/patients',
+            'triage': '/api/v1/database/triage',
+            'recordings': '/api/v1/database/recordings',
+            'devices': '/api/v1/database/devices',
+            'auth_login': '/api/v1/auth/google/login',
+            'auth_callback': '/api/v1/auth/google/callback',
         }
     })
-@app.route("/api/v1/debug/env", methods=["GET"])
-def debug_env():
+
+@app.route('/health')
+def health():
     return jsonify({
-        "GOOGLE_CLIENT_ID": bool(os.getenv("GOOGLE_CLIENT_ID")),
-        "GOOGLE_CLIENT_SECRET": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
-        "GOOGLE_REDIRECT_URI": os.getenv("GOOGLE_REDIRECT_URI"),
-        "FRONTEND_URL": os.getenv("FRONTEND_URL"),
-        "JWT_SECRET": bool(os.getenv("JWT_SECRET"))
+        'status': 'healthy',
+        'environment': os.environ.get('FLASK_ENV', 'development'),
+        'allowed_origins': allowed_origins
     })
 
-# =========================
-# ERROR HANDLERS
-# =========================
+@app.route('/mobile')
+def serve_mobile():
+    mobile_path = os.path.join(os.path.dirname(backend_dir), 'frontend_mobile')
+    if os.path.exists(os.path.join(mobile_path, 'index.html')):
+        return send_from_directory(mobile_path, 'index.html')
+    return jsonify({'error': 'Mobile app not found'}), 404
+
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({"error": "Endpoint not found"}), 404
-
+    return jsonify({'error': 'Endpoint not found'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({"error": "Internal server error"}), 500
+    return jsonify({'error': 'Internal server error'}), 500
 
-# =========================
-# MAIN (LOCAL ONLY)
-# =========================
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
-
-    backend_url = os.environ.get(
-        "RENDER_EXTERNAL_URL",
-        f"http://localhost:{port}"
-    )
-
-    print("\n" + "=" * 60)
-    print("SAKA BACKEND API")
-    print("=" * 60)
-    print(f"Backend URL: {backend_url}")
-    print(f"Auth Login: {backend_url}/api/v1/auth/google/login")
-    print(f"Callback: {backend_url}/api/v1/auth/google/callback")
-    print("=" * 60)
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=True
-    )
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5001))
+    
+    print("=" * 50)
+    print(" HEART SOUND CLASSIFIER API")
+    print("=" * 50)
+    print(f"\n Backend path: {backend_dir}")
+    print(f" Authentication: Google OAuth")
+    print(f" Session: Filesystem")
+    print(f" Database: SQLite (doctors.db)")
+    print(f"\n Allowed Origins: {allowed_origins}")
+    print("\n Starting server at http://localhost:" + str(port))
+    print(" Health check: http://localhost:" + str(port) + "/health")
+    print(" Auth login: http://localhost:" + str(port) + "/api/v1/auth/google/login")
+    print("=" * 50)
+    
+    app.run(debug=False, host='0.0.0.0', port=port)
