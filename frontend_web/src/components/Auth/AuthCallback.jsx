@@ -54,7 +54,6 @@ useEffect(() => {
 
     console.log("🚀 Redirecting to dashboard...");
     window.location.href = window.location.origin + '/dashboard';
-
   } catch (error) {
     console.error("💥 Auth callback error:", error);
     console.log("Raw user param was:", userDataParam);
