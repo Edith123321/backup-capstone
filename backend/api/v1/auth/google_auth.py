@@ -19,7 +19,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/v1/auth')
 # Google OAuth Configuration
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.environ.get('https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback', )
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-super-secret-jwt-key-change-this-in-production')
 FRONTEND_URL = os.environ.get('FRONTEND_URL')
 
