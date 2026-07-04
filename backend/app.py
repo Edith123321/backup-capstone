@@ -101,7 +101,7 @@ def index():
         "endpoints": {
             "auth_login": "/api/v1/auth/google/login",
             "auth_callback": "/api/v1/auth/google/callback",
-            "patients": "/api/v1/database/patients",
+            "patients": "/database/patients",
             "triage": "/api/v1/database/triage",
         }
     })

@@ -8,7 +8,7 @@ import React, {
 
 const AuthContext = createContext();
 
- const API_BASE_URL = 'https://capstone-be-yxzd.onrender.com/api/v1';
+ const API_BASE_URL = 'https://capstone-be-yxzd.onrender.com';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
