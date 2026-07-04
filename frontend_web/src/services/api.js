@@ -1,36 +1,40 @@
 // frontend_web/src/services/api.js
 import axios from 'axios';
 
-// Use Vite's import.meta.env for Vite projects
-const API_URL =axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com",
-  withCredentials: true,
-});
-
+// =====================
+// AXIOS INSTANCE
+// =====================
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com",
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
-// Add token to requests
+// =====================
+// AUTH INTERCEPTOR
+// =====================
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Handle 401 responses
+// =====================
+// RESPONSE HANDLER
+// =====================
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
+  (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -40,135 +44,139 @@ api.interceptors.response.use(
   }
 );
 
-// ============ SCREENING SERVICES ============
+// =====================
+// SCREENING SERVICES
+// =====================
 export const screeningService = {
-  // Health check
   healthCheck: async () => {
-    const response = await api.get('/api/v1/screening/health');
-    return response.data;
+    const res = await api.get('/api/v1/screening/health');
+    return res.data;
   },
 
-  // Get model info
   getModelInfo: async () => {
-    const response = await api.get('/api/v1/screening/info');
-    return response.data;
+    const res = await api.get('/api/v1/screening/info');
+    return res.data;
   },
 
-  // Predict a single heart sound
   predict: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    
-    const response = await api.post('/api/v1/screening/predict', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+
+    const res = await api.post('/api/v1/screening/predict', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return response.data;
+
+    return res.data;
   },
 
-  // Batch predict multiple files
   batchPredict: async (files) => {
     const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('files', file);
+    files.forEach(file => formData.append('files', file));
+
+    const res = await api.post('/api/v1/screening/batch_predict', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-    
-    const response = await api.post('/api/v1/screening/batch_predict', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
+
+    return res.data;
   },
 
-  // Get result by ID
   getResult: async (resultId) => {
-    const response = await api.get(`/api/v1/screening/results/${resultId}`);
-    return response.data;
-  }
+    const res = await api.get(`/api/v1/screening/results/${resultId}`);
+    return res.data;
+  },
 };
 
-// ============ DATABASE SERVICES ============
+// =====================
+// DATABASE API
+// =====================
 export const databaseApi = {
   // ---- PATIENTS ----
   getPatients: async (doctorId) => {
-    const response = await api.get(`/database/patients?doctor_id=${doctorId}`);
-    return response.data;
+    const res = await api.get(
+      `/api/v1/database/patients?doctor_id=${doctorId}`
+    );
+    return res.data;
   },
 
   createPatient: async (data) => {
-    const response = await api.post('/database/patients', data);
-    return response.data;
+    const res = await api.post('/api/v1/database/patients', data);
+    return res.data;
   },
 
   getPatient: async (patientId) => {
-    const response = await api.get(`/api/v1/database/patients/${patientId}`);
-    return response.data;
+    const res = await api.get(`/api/v1/database/patients/${patientId}`);
+    return res.data;
   },
 
   // ---- TRIAGE ----
   getTriageByDoctor: async (doctorId) => {
-    const response = await api.get(`/api/v1/database/triage/doctor/${doctorId}`);
-    return response.data;
+    const res = await api.get(
+      `/api/v1/database/triage/doctor/${doctorId}`
+    );
+    return res.data;
   },
 
   getTriageByPatient: async (patientId) => {
-    const response = await api.get(`/api/v1/database/triage/patient/${patientId}`);
-    return response.data;
+    const res = await api.get(
+      `/api/v1/database/triage/patient/${patientId}`
+    );
+    return res.data;
   },
 
   createTriage: async (data) => {
-    const response = await api.post('/api/v1/database/triage', data);
-    return response.data;
+    const res = await api.post('/api/v1/database/triage', data);
+    return res.data;
   },
 
   calculateTriage: async (data) => {
-    const response = await api.post('/api/v1/database/triage/calculate', data);
-    return response.data;
+    const res = await api.post('/api/v1/database/triage/calculate', data);
+    return res.data;
   },
 
-  // ---- HEART SOUND RECORDINGS ----
+  // ---- RECORDINGS ----
   getRecordings: async (patientId) => {
-    const response = await api.get(`/api/v1/database/recordings/patient/${patientId}`);
-    return response.data;
+    const res = await api.get(
+      `/api/v1/database/recordings/patient/${patientId}`
+    );
+    return res.data;
   },
 
   saveRecording: async (data) => {
-    const response = await api.post('/api/v1/database/recordings', data);
-    return response.data;
+    const res = await api.post('/api/v1/database/recordings', data);
+    return res.data;
   },
 
-  // ---- IOT DEVICES ----
+  // ---- DEVICES ----
   getDevices: async (doctorId) => {
-    const response = await api.get(`/api/v1/database/devices/${doctorId}`);
-    return response.data;
+    const res = await api.get(`/api/v1/database/devices/${doctorId}`);
+    return res.data;
   },
 
   registerDevice: async (data) => {
-    const response = await api.post('/api/v1/database/devices/register', data);
-    return response.data;
+    const res = await api.post('/api/v1/database/devices/register', data);
+    return res.data;
   },
 
   updateDeviceStatus: async (deviceId, status) => {
-    const response = await api.put(`/api/v1/database/devices/${deviceId}/status`, { status });
-    return response.data;
+    const res = await api.put(
+      `/api/v1/database/devices/${deviceId}/status`,
+      { status }
+    );
+    return res.data;
   },
 };
 
-// ============ PATIENT SERVICE (Mock data fallback) ============
+// =====================
+// PATIENT SERVICE (FALLBACK)
+// =====================
 export const patientService = {
-  // Get all patients (uses real API if available, falls back to mock)
   getPatients: async (doctorId) => {
     try {
-      const response = await databaseApi.getPatients(doctorId);
-      if (response.success) {
-        return response.patients;
-      }
+      const res = await databaseApi.getPatients(doctorId);
+      if (res.success) return res.patients;
       throw new Error('Failed to fetch patients');
     } catch (error) {
       console.warn('Using mock patient data:', error);
-      // Mock data fallback
       return [
         { id: '1', name: 'Sarah Kamau', age: 12, gender: 'Female', result: 'RHD', date: '2026-06-25', confidence: 97.2 },
         { id: '2', name: 'John Otieno', age: 8, gender: 'Male', result: 'Normal', date: '2026-06-25', confidence: 98.8 },
@@ -177,73 +185,26 @@ export const patientService = {
       ];
     }
   },
-
-  // Get patient by ID
-  getPatientById: async (id) => {
-    try {
-      const response = await databaseApi.getPatient(id);
-      if (response.success) {
-        return response.patient;
-      }
-      throw new Error('Failed to fetch patient');
-    } catch (error) {
-      console.warn('Using mock patient data:', error);
-      // Mock data fallback
-      return {
-        id: id,
-        name: 'Sarah Kamau',
-        age: 12,
-        gender: 'Female',
-        result: 'RHD',
-        confidence: 97.2,
-        dateOfBirth: '2014-06-15',
-        lastScreening: '2026-06-25',
-        screenings: [
-          { date: '2026-06-25', result: 'RHD', confidence: 97.2 },
-          { date: '2026-05-20', result: 'Normal', confidence: 95.8 }
-        ],
-        notes: 'Patient presents with mild fever and chest pain.',
-        doctor: 'Dr. Jane Smith',
-        location: 'Nairobi, Kenya'
-      };
-    }
-  },
-
-  // Create a new patient
-  createPatient: async (data) => {
-    const response = await databaseApi.createPatient(data);
-    return response;
-  },
-
-  // Get screening history
-  getHistory: async () => {
-    // Mock data - replace with actual API call
-    return [
-      { id: '1', name: 'Sarah Kamau', age: 12, result: 'RHD', date: '2026-06-25', confidence: 97.2, doctor: 'Dr. Smith' },
-      { id: '2', name: 'John Otieno', age: 8, result: 'Normal', date: '2026-06-25', confidence: 98.8, doctor: 'Dr. Jones' },
-      { id: '3', name: 'Mary Wanjiku', age: 14, result: 'Normal', date: '2026-06-24', confidence: 99.1, doctor: 'Dr. Smith' },
-      { id: '4', name: 'Peter Mwangi', age: 10, result: 'RHD', date: '2026-06-24', confidence: 95.8, doctor: 'Dr. Williams' },
-    ];
-  }
 };
 
-// ============ STATS SERVICE ============
+// =====================
+// STATS SERVICE
+// =====================
 export const statsService = {
-  // Get dashboard stats
   getStats: async (doctorId) => {
     try {
-      // Try to get real data
       const patients = await patientService.getPatients(doctorId);
       const triage = await databaseApi.getTriageByDoctor(doctorId);
-      
+
       return {
         totalPatients: patients?.length || 0,
-        todayScreenings: patients?.filter(p => {
-          const today = new Date().toDateString();
-          return new Date(p.date).toDateString() === today;
-        }).length || 0,
+        todayScreenings: patients?.filter(p =>
+          new Date(p.date).toDateString() === new Date().toDateString()
+        ).length || 0,
         accuracy: '98.4%',
-        flagged: triage?.triage?.filter(t => t.triage_color === 'Red' || t.triage_color === 'Orange').length || 0,
+        flagged: triage?.triage?.filter(t =>
+          t.triage_color === 'Red' || t.triage_color === 'Orange'
+        ).length || 0,
         recentActivities: [
           { type: 'upload', title: 'New heart sound uploaded', patient: patients?.[0]?.name || 'N/A', time: '2 min ago' },
           { type: 'result', title: 'RHD detected', patient: patients?.[1]?.name || 'N/A', time: '15 min ago' }
@@ -258,7 +219,6 @@ export const statsService = {
       };
     } catch (error) {
       console.warn('Using mock stats data:', error);
-      // Mock data fallback
       return {
         totalPatients: 14,
         todayScreenings: 5,
