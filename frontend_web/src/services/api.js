@@ -2,11 +2,22 @@
 import axios from 'axios';
 
 // =====================
+// BASE URL (IMPORTANT FIX)
+// =====================
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://capstone-be-yxzd.onrender.com/api/v1';
+
+// =====================
 // AXIOS INSTANCE
 // =====================
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com/api/v1",
+  baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 // =====================
@@ -26,7 +37,7 @@ api.interceptors.request.use(
 );
 
 // =====================
-// RESPONSE HANDLER
+// RESPONSE INTERCEPTOR
 // =====================
 api.interceptors.response.use(
   (response) => response,
@@ -45,12 +56,12 @@ api.interceptors.response.use(
 // =====================
 export const screeningService = {
   healthCheck: async () => {
-    const res = await api.get('/api/v1/screening/health');
+    const res = await api.get('/screening/health');
     return res.data;
   },
 
   getModelInfo: async () => {
-    const res = await api.get('/api/v1/screening/info');
+    const res = await api.get('/screening/info');
     return res.data;
   },
 
@@ -58,7 +69,7 @@ export const screeningService = {
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await api.post('/api/v1/screening/predict', formData, {
+    const res = await api.post('/screening/predict', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
@@ -67,9 +78,9 @@ export const screeningService = {
 
   batchPredict: async (files) => {
     const formData = new FormData();
-    files.forEach(file => formData.append('files', file));
+    files.forEach((file) => formData.append('files', file));
 
-    const res = await api.post('/api/v1/screening/batch_predict', formData, {
+    const res = await api.post('/screening/batch_predict', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
@@ -77,7 +88,7 @@ export const screeningService = {
   },
 
   getResult: async (resultId) => {
-    const res = await api.get(`/api/v1/screening/results/${resultId}`);
+    const res = await api.get(`/screening/results/${resultId}`);
     return res.data;
   },
 };
@@ -88,74 +99,66 @@ export const screeningService = {
 export const databaseApi = {
   // ---- PATIENTS ----
   getPatients: async (doctorId) => {
-    const res = await api.get(
-      `/api/v1/database/patients?doctor_id=${doctorId}`
-    );
+    const res = await api.get(`/database/patients?doctor_id=${doctorId}`);
     return res.data;
   },
 
   createPatient: async (data) => {
-    const res = await api.post('/api/v1/database/patients', data);
+    const res = await api.post('/database/patients', data);
     return res.data;
   },
 
   getPatient: async (patientId) => {
-    const res = await api.get(`/api/v1/database/patients/${patientId}`);
+    const res = await api.get(`/database/patients/${patientId}`);
     return res.data;
   },
 
   // ---- TRIAGE ----
   getTriageByDoctor: async (doctorId) => {
-    const res = await api.get(
-      `/api/v1/database/triage/doctor/${doctorId}`
-    );
+    const res = await api.get(`/database/triage/doctor/${doctorId}`);
     return res.data;
   },
 
   getTriageByPatient: async (patientId) => {
-    const res = await api.get(
-      `/api/v1/database/triage/patient/${patientId}`
-    );
+    const res = await api.get(`/database/triage/patient/${patientId}`);
     return res.data;
   },
 
   createTriage: async (data) => {
-    const res = await api.post('/api/v1/database/triage', data);
+    const res = await api.post('/database/triage', data);
     return res.data;
   },
 
   calculateTriage: async (data) => {
-    const res = await api.post('/api/v1/database/triage/calculate', data);
+    const res = await api.post('/database/triage/calculate', data);
     return res.data;
   },
 
   // ---- RECORDINGS ----
   getRecordings: async (patientId) => {
-    const res = await api.get(
-      `/api/v1/database/recordings/patient/${patientId}`
-    );
+    const res = await api.get(`/database/recordings/patient/${patientId}`);
     return res.data;
   },
 
   saveRecording: async (data) => {
-    const res = await api.post('/api/v1/database/recordings', data);
+    const res = await api.post('/database/recordings', data);
     return res.data;
   },
 
   // ---- DEVICES ----
   getDevices: async (doctorId) => {
-    const res = await api.get(`/api/v1/database/devices/${doctorId}`);
+    const res = await api.get(`/database/devices/${doctorId}`);
     return res.data;
   },
 
   registerDevice: async (data) => {
-    const res = await api.post('/api/v1/database/devices/register', data);
+    const res = await api.post('/database/devices/register', data);
     return res.data;
   },
 
   updateDeviceStatus: async (deviceId, status) => {
     const res = await api.put(
-      `/api/v1/database/devices/${deviceId}/status`,
+      `/database/devices/${deviceId}/status`,
       { status }
     );
     return res.data;
