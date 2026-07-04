@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Use Vite's import.meta.env for Vite projects
 const API_URL =axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com/api/v1",
+  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com",
   withCredentials: true,
 });
 
@@ -44,13 +44,13 @@ api.interceptors.response.use(
 export const screeningService = {
   // Health check
   healthCheck: async () => {
-    const response = await api.get('/screening/health');
+    const response = await api.get('/api/v1/screening/health');
     return response.data;
   },
 
   // Get model info
   getModelInfo: async () => {
-    const response = await api.get('/screening/info');
+    const response = await api.get('/api/v1/screening/info');
     return response.data;
   },
 
@@ -59,7 +59,7 @@ export const screeningService = {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await api.post('/screening/predict', formData, {
+    const response = await api.post('/api/v1/screening/predict', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -74,7 +74,7 @@ export const screeningService = {
       formData.append('files', file);
     });
     
-    const response = await api.post('/screening/batch_predict', formData, {
+    const response = await api.post('/api/v1/screening/batch_predict', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -84,7 +84,7 @@ export const screeningService = {
 
   // Get result by ID
   getResult: async (resultId) => {
-    const response = await api.get(`/screening/results/${resultId}`);
+    const response = await api.get(`/api/v1/screening/results/${resultId}`);
     return response.data;
   }
 };
