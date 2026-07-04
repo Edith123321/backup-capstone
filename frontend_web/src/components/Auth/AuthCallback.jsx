@@ -8,35 +8,61 @@ const AuthCallback = () => {
   const { handleAuthCallback } = useAuth();
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+useEffect(() => {
+  console.log("🔄 AuthCallback mounted");
+  console.log("🌐 Full URL:", window.location.href);
+  console.log("🔎 Search params:", window.location.search);
+
   const params = new URLSearchParams(window.location.search);
 
   const token = params.get('token');
   const userDataParam = params.get('user');
 
+  console.log("🔑 Token exists:", !!token);
+  console.log("👤 User param exists:", !!userDataParam);
+
   if (!token || !userDataParam) {
+    console.error("❌ Missing auth data");
+    console.log("Token value:", token);
+    console.log("User value:", userDataParam);
+
     setError('Missing authentication data');
+
     setTimeout(() => {
+      console.log("↩️ Redirecting to login...");
       window.location.href = '/login';
     }, 3000);
+
     return;
   }
 
   try {
-    const user = JSON.parse(decodeURIComponent(userDataParam));
+    console.log("📦 Raw user param:", userDataParam);
 
+    const decoded = decodeURIComponent(userDataParam);
+    console.log("🧾 Decoded user JSON string:", decoded);
+
+    const user = JSON.parse(decoded);
+    console.log("✅ Parsed user object:", user);
+
+    console.log("💾 Saving to localStorage...");
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
 
+    console.log("🔐 Calling handleAuthCallback...");
     handleAuthCallback(token, user);
 
-    // IMPORTANT: use hard redirect
+    console.log("🚀 Redirecting to dashboard...");
     window.location.href = window.location.origin + '/dashboard';
 
   } catch (error) {
+    console.error("💥 Auth callback error:", error);
+    console.log("Raw user param was:", userDataParam);
+
     setError(`Auth failed: ${error.message}`);
 
     setTimeout(() => {
+      console.log("↩️ Redirecting to login after error...");
       window.location.href = '/login';
     }, 3000);
   }
