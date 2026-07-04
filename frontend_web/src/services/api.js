@@ -5,11 +5,7 @@ import axios from 'axios';
 // AXIOS INSTANCE
 // =====================
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com",
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com/api/v1",
   withCredentials: true,
 });
 
