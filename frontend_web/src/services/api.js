@@ -3,11 +3,13 @@ import axios from 'axios';
 // =====================
 // AXIOS INSTANCE
 // =====================
+const baseUrl = import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com",
+  // This ensures that even if you forget /api/v1 in the env var, it works correctly
+  baseURL: baseUrl.endsWith('/api/v1') ? baseUrl : `${baseUrl}/api/v1`,
   withCredentials: true,
 });
-
 // =====================
 // AUTH INTERCEPTOR
 // =====================

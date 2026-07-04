@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_session import Session
@@ -44,15 +43,15 @@ allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
 # Add all possible frontend URLs
 frontend_urls = [
     'https://saka-frontend.onrender.com',
-    'https://backup-capstone-mbq6.onrender.com',  # Your current frontend
-    'https://capstone-frontend.onrender.com',     # Alternative frontend
+    'https://backup-capstone-mbq6.onrender.com', 
+    'https://capstone-frontend.onrender.com',     
 ]
 
 for url in frontend_urls:
     if url not in allowed_origins:
         allowed_origins.append(url)
 
-# Also add your backend URL for self-requests
+# Add backend URL for self-requests
 backend_url = 'https://capstone-be-yxzd.onrender.com'
 if backend_url not in allowed_origins:
     allowed_origins.append(backend_url)
@@ -70,12 +69,14 @@ CORS(app,
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
      expose_headers=['Content-Type', 'Authorization'])
 
-# Register blueprints
-app.register_blueprint(heart_sound_bp)
-app.register_blueprint(database_bp)
-app.register_blueprint(validation_bp)
-app.register_blueprint(auth_bp)
-app.register_blueprint(test_auth_bp)
+# ============ BLUEPRINT REGISTRATION ============
+# Adding '/api/v1' prefix here ensures that routes like database_bp 
+# (which has its own '/database' prefix) become '/api/v1/database/...'
+app.register_blueprint(heart_sound_bp, url_prefix='/api/v1')
+app.register_blueprint(database_bp, url_prefix='/api/v1')
+app.register_blueprint(validation_bp, url_prefix='/api/v1')
+app.register_blueprint(auth_bp, url_prefix='/api/v1')
+app.register_blueprint(test_auth_bp, url_prefix='/api/v1')
 
 @app.route('/', methods=['GET'])
 def index():
@@ -85,7 +86,7 @@ def index():
         'status': 'running',
         'allowed_origins': allowed_origins,
         'endpoints': {
-            'health': '/api/v1/screening/health',
+            'health': '/health',
             'predict': '/api/v1/screening/predict',
             'validate': '/api/v1/screening/validate',
             'patients': '/api/v1/database/patients',
