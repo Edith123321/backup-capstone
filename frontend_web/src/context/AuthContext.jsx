@@ -1,113 +1,149 @@
 // frontend_web/src/context/AuthContext.jsx
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
-import axios from 'axios';
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  useRef,
+} from 'react';
 
 const AuthContext = createContext();
-const API_URL = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com/api/v1',
-  withCredentials: true
-});
+
+// =====================
+// FIXED BASE URL (STRING ONLY)
+// =====================
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://capstone-be-yxzd.onrender.com/api/v1';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
-  
-  // Use a ref to track if verification has been done
+
   const verificationDone = useRef(false);
 
+  // =====================
+  // LOAD AUTH FROM STORAGE
+  // =====================
   useEffect(() => {
-    // Only run once
-    if (verificationDone.current) {
-      return;
-    }
-    
+    if (verificationDone.current) return;
+
     const storedToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
-    
+
     console.log('🔍 AuthProvider: Checking localStorage...');
-    console.log('🔍 AuthProvider: Token present:', !!storedToken);
-    console.log('🔍 AuthProvider: User present:', !!storedUser);
-    
+    console.log('🔍 Token exists:', !!storedToken);
+    console.log('🔍 User exists:', !!storedUser);
+
     if (storedToken && storedUser) {
-      setToken(storedToken);
       try {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-        console.log('✅ AuthProvider: User loaded from localStorage:', userData.email);
+        const parsedUser = JSON.parse(storedUser);
+
+        setToken(storedToken);
+        setUser(parsedUser);
+
         verificationDone.current = true;
         setLoading(false);
-      } catch (error) {
-        console.error('Failed to parse stored user:', error);
+
+        console.log('✅ Auth restored:', parsedUser.email);
+      } catch (err) {
+        console.error('❌ Failed to parse user:', err);
+
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+
         setLoading(false);
       }
     } else {
-      console.log('🔍 AuthProvider: No stored auth data');
       setLoading(false);
     }
-  }, []); // Empty dependency - only run once
+  }, []);
 
- const login = () => {
-  window.location.href =
-    `${API_URL}/api/v1/auth/google/login`;
-};
+  // =====================
+  // LOGIN (GOOGLE REDIRECT FIXED)
+  // =====================
+  const login = () => {
+    const loginUrl = `${API_BASE_URL}/auth/google/login`;
+    console.log('🚀 Redirecting to:', loginUrl);
+    window.location.href = loginUrl;
+  };
 
+  // =====================
+  // LOGOUT
+  // =====================
   const logout = () => {
     console.log('🔍 Logging out...');
+
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+
     setToken(null);
     setUser(null);
     verificationDone.current = false;
+
     window.location.href = '/';
   };
 
+  // =====================
+  // AUTH CALLBACK HANDLER
+  // =====================
   const handleAuthCallback = (token, userData) => {
-    console.log('🔄 handleAuthCallback called');
-    console.log('📝 Token present:', !!token);
-    console.log('👤 User data:', userData);
-    
-    if (token && userData) {
-      // Save to localStorage
+    console.log('🔄 Auth callback triggered');
+
+    if (!token || !userData) {
+      console.error('❌ Missing auth data');
+
+      window.location.href = '/login?error=Invalid auth data';
+      return;
+    }
+
+    try {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
-      
-      // Update state
+
       setToken(token);
       setUser(userData);
+
       verificationDone.current = true;
-      
-      console.log('✅ Auth state updated successfully');
-      
-      // Use window.location for a hard redirect
+
+      console.log('✅ Auth saved successfully');
+      console.log('🚀 Redirecting to dashboard...');
+
       window.location.href = '/dashboard';
-    } else {
-      console.error('❌ Invalid auth data received');
-      window.location.href = '/login?error=Invalid auth data';
+    } catch (err) {
+      console.error('❌ Auth save failed:', err);
+
+      window.location.href = '/login?error=Auth processing failed';
     }
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      token,
-      login,
-      logout,
-      handleAuthCallback,
-      isAuthenticated: !!user
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        token,
+        login,
+        logout,
+        handleAuthCallback,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
+// =====================
+// HOOK
+// =====================
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within AuthProvider');
   }
+
   return context;
 };
