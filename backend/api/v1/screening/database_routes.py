@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
 from services.database import db
 
-database_bp = Blueprint('database', __name__, url_prefix='/api/v1/database')
+database_bp = Blueprint('database', __name__, url_prefix='/database')
 
 
 # =======================
