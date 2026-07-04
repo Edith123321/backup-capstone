@@ -103,55 +103,55 @@ export const databaseApi = {
   },
 
   getPatient: async (patientId) => {
-    const response = await api.get(`/database/patients/${patientId}`);
+    const response = await api.get(`/api/v1/database/patients/${patientId}`);
     return response.data;
   },
 
   // ---- TRIAGE ----
   getTriageByDoctor: async (doctorId) => {
-    const response = await api.get(`/database/triage/doctor/${doctorId}`);
+    const response = await api.get(`/api/v1/database/triage/doctor/${doctorId}`);
     return response.data;
   },
 
   getTriageByPatient: async (patientId) => {
-    const response = await api.get(`/database/triage/patient/${patientId}`);
+    const response = await api.get(`/api/v1/database/triage/patient/${patientId}`);
     return response.data;
   },
 
   createTriage: async (data) => {
-    const response = await api.post('/database/triage', data);
+    const response = await api.post('/api/v1/database/triage', data);
     return response.data;
   },
 
   calculateTriage: async (data) => {
-    const response = await api.post('/database/triage/calculate', data);
+    const response = await api.post('/api/v1/database/triage/calculate', data);
     return response.data;
   },
 
   // ---- HEART SOUND RECORDINGS ----
   getRecordings: async (patientId) => {
-    const response = await api.get(`/database/recordings/patient/${patientId}`);
+    const response = await api.get(`/api/v1/database/recordings/patient/${patientId}`);
     return response.data;
   },
 
   saveRecording: async (data) => {
-    const response = await api.post('/database/recordings', data);
+    const response = await api.post('/api/v1/database/recordings', data);
     return response.data;
   },
 
   // ---- IOT DEVICES ----
   getDevices: async (doctorId) => {
-    const response = await api.get(`/database/devices/${doctorId}`);
+    const response = await api.get(`/api/v1/database/devices/${doctorId}`);
     return response.data;
   },
 
   registerDevice: async (data) => {
-    const response = await api.post('/database/devices/register', data);
+    const response = await api.post('/api/v1/database/devices/register', data);
     return response.data;
   },
 
   updateDeviceStatus: async (deviceId, status) => {
-    const response = await api.put(`/database/devices/${deviceId}/status`, { status });
+    const response = await api.put(`/api/v1/database/devices/${deviceId}/status`, { status });
     return response.data;
   },
 };
