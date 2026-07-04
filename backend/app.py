@@ -52,16 +52,17 @@ Session(app)
 # =========================
 FRONTEND_URL = os.environ.get("FRONTEND_URL")
 
+allowed_origins = [
+  "https://backup-capstone-mbq6.onrender.com",
+    "https://capstone-be-yxzd.onrender.com"
+]
 
 # add frontend from env if set
 if FRONTEND_URL:
     allowed_origins.append(FRONTEND_URL)
 
 CORS(app,
-     origins=[
-        "https://backup-capstone-mbq6.onrender.com",
-        "https://capstone-be-yxzd.onrender.com"
-     ],
+     origins=allowed_origins,
      supports_credentials=True,
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
