@@ -96,7 +96,7 @@ print("✅ All blueprints registered successfully")
 # =========================
 # ROOT ROUTE
 # =========================
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['GET', "OPTIONS"])
 def index():
     return jsonify({
         "name": "SAKA Backend API",
