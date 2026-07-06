@@ -20,14 +20,20 @@ const AuthCallback = () => {
     }
 
     try {
-      const user = JSON.parse(decodeURIComponent(userParam));
+      // ✅ SAFE PARSE
+      const decoded = decodeURIComponent(userParam);
+
+      const user =
+        typeof decoded === 'string'
+          ? JSON.parse(decoded)
+          : decoded;
 
       setAuth(token, user);
 
-      // ✅ SINGLE REDIRECT ONLY
       navigate('/dashboard', { replace: true });
 
     } catch (err) {
+      console.error('Auth parse error:', err);
       setError('Auth failed');
       setTimeout(() => navigate('/login'), 2000);
     }
