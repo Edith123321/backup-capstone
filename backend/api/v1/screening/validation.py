@@ -18,6 +18,18 @@ def validate():
         return jsonify({}), 200
     
     try:
+        # Handle JSON data first
+        if request.is_json:
+            data = request.get_json()
+            if data:
+                print(f"📊 Validate with JSON data: {data}")
+                return jsonify({
+                    'success': True,
+                    'message': 'Validation successful',
+                    'data': data,
+                    'source': 'json_input'
+                })
+        
         # Handle file upload
         if 'file' in request.files and request.files.get('file'):
             file = request.files.get('file')
@@ -27,6 +39,8 @@ def validate():
             file_data = file.read()
             file_size = len(file_data)
             
+            print(f"📁 Validate with file: {file.filename}")
+            
             return jsonify({
                 'success': True,
                 'message': 'File validated successfully',
@@ -34,17 +48,6 @@ def validate():
                 'file_size': file_size,
                 'source': 'file_upload'
             })
-        
-        # Handle JSON data
-        if request.is_json:
-            data = request.get_json()
-            if data:
-                return jsonify({
-                    'success': True,
-                    'message': 'Validation successful',
-                    'data': data,
-                    'source': 'json_input'
-                })
         
         # Handle form data with JSON
         if request.form and request.form.get('data'):
@@ -72,7 +75,7 @@ def validate():
         return jsonify({'error': str(e)}), 500
 
 # =========================
-# PREDICTION ENDPOINT (FIXED)
+# PREDICTION ENDPOINT (FIXED - JSON FIRST)
 # =========================
 @validation_bp.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
@@ -81,7 +84,7 @@ def predict():
         return jsonify({}), 200
     
     try:
-        # Check if it's JSON first (for testing without file)
+        # IMPORTANT: Check JSON FIRST before file upload
         if request.is_json:
             data = request.get_json()
             if data:
@@ -98,7 +101,7 @@ def predict():
                     'source': 'json_input'
                 })
         
-        # Check for file upload
+        # Handle file upload (only if not JSON)
         if 'file' in request.files and request.files.get('file'):
             file = request.files.get('file')
             if not file or file.filename == '':
