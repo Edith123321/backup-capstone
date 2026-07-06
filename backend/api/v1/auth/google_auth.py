@@ -1,8 +1,9 @@
-from flask import Blueprint, redirect, request, jsonify, url_for
+from flask import Blueprint, redirect, request, jsonify
 import os
 import requests
 import urllib.parse
 import jwt
+import json
 from datetime import datetime, timedelta
 import logging
 
@@ -15,7 +16,6 @@ auth_bp = Blueprint("auth", __name__)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
-# Make sure these URLs match EXACTLY with Google Cloud Console
 REDIRECT_URI = "https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback"
 FRONTEND_URL = "https://backup-capstone-mbq6.onrender.com"
 JWT_SECRET = os.getenv("JWT_SECRET", "dev")
@@ -26,8 +26,6 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev")
 @auth_bp.route("/google/login")
 def login():
     logger.info(f"Login endpoint called")
-    logger.info(f"GOOGLE_CLIENT_ID: {GOOGLE_CLIENT_ID[:10]}...")
-    logger.info(f"REDIRECT_URI: {REDIRECT_URI}")
     
     if not GOOGLE_CLIENT_ID:
         logger.error("Google Client ID not configured")
@@ -40,7 +38,6 @@ def login():
         "&response_type=code"
         "&scope=openid%20email%20profile"
     )
-    logger.info(f"Redirecting to Google: {url}")
     return redirect(url)
 
 # =========================
@@ -56,7 +53,7 @@ def callback():
         return jsonify({"error": "No code provided"}), 400
 
     try:
-        logger.info("Exchanging code for token...")
+        # Exchange code for token
         token_response = requests.post(
             "https://oauth2.googleapis.com/token",
             data={
@@ -68,26 +65,25 @@ def callback():
             },
         )
         token = token_response.json()
-        logger.info(f"Token response: {token.keys() if token else 'Empty'}")
         
         if "error" in token:
             logger.error(f"Token error: {token}")
             return jsonify({"error": token.get("error_description", "Token exchange failed")}), 400
 
         access_token = token.get("access_token")
-        logger.info("Getting user info...")
         
+        # Get user info
         user_response = requests.get(
             "https://www.googleapis.com/oauth2/v2/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
         )
         user = user_response.json()
-        logger.info(f"User info received: {user.get('email', 'No email')}")
         
         if "error" in user:
             logger.error(f"User info error: {user}")
             return jsonify({"error": "Failed to get user info"}), 400
 
+        # Generate JWT token
         jwt_token = jwt.encode(
             {
                 "email": user["email"],
@@ -99,11 +95,14 @@ def callback():
             algorithm="HS256",
         )
         
-        logger.info(f"Generated JWT token for user: {user['email']}")
+        # IMPORTANT: Use json.dumps() instead of str()
+        # This ensures valid JSON format that JavaScript can parse
+        user_json = json.dumps(user)
+        encoded_user = urllib.parse.quote(user_json)
         
-        # Redirect to frontend with token
-        redirect_url = f"{FRONTEND_URL}/auth/callback?token={jwt_token}&user={urllib.parse.quote(str(user))}"
-        logger.info(f"Redirecting to: {redirect_url[:100]}...")
+        # Redirect to frontend with token and user data
+        redirect_url = f"{FRONTEND_URL}/auth/callback?token={jwt_token}&user={encoded_user}"
+        logger.info(f"Redirecting to frontend with user: {user['email']}")
         
         return redirect(redirect_url)
         
