@@ -63,13 +63,18 @@ allowed_origins = [
 
 CORS(
     app,
-    origins=allowed_origins,
-    supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    expose_headers=["Content-Type", "Authorization"]
+    resources={r"/*": {
+        "origins": allowed_origins,
+        "supports_credentials": True,
+        "allow_headers": [
+            "Content-Type",
+            "Authorization",
+            "Accept",
+            "X-Requested-With"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    }}
 )
-
 print("=" * 60)
 print("CORS ENABLED FOR:")
 for origin in allowed_origins:
