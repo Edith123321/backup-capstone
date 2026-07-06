@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
 
 
 const login = () => {
-  const url = `${API_baseURL}/api/v1/auth/google/login`;
+  const url = `${API_baseURL}//api/v1/auth/google/login`;
 
   console.log("🚀 Redirecting to backend login:", url);
 
