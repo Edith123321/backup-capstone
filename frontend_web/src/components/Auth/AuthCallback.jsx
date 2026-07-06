@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -6,29 +6,18 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const processed = useRef(false); // Prevent double processing
 
   useEffect(() => {
-    // Prevent double execution
-    if (processed.current) {
-      console.log('Already processed, skipping...');
-      return;
-    }
-
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const userParam = params.get('user');
 
-    console.log('AuthCallback - Token:', token ? 'Present' : 'Missing');
-    console.log('AuthCallback - UserParam:', userParam ? 'Present' : 'Missing');
+    console.log('🔐 Processing authentication callback...');
 
+    // Check for missing data
     if (!token || !userParam) {
-      console.error('Missing auth data');
+      console.error('❌ Missing token or user data');
       setError('Missing authentication data');
-      setLoading(false);
-      
-      // Redirect to login after 2 seconds
       setTimeout(() => {
         navigate('/login', { replace: true });
       }, 2000);
@@ -36,71 +25,111 @@ const AuthCallback = () => {
     }
 
     try {
-      // Mark as processed immediately to prevent double execution
-      processed.current = true;
-      
-      // Decode the user parameter
+      // Decode and parse user data
       const decodedUser = decodeURIComponent(userParam);
-      console.log('Decoded user string:', decodedUser);
-      
       const user = JSON.parse(decodedUser);
-      console.log('Parsed user object:', user);
-
+      
+      console.log(`✅ Authenticated as: ${user.email}`);
+      
       // Set authentication
       setAuth(token, user);
-      setLoading(false);
       
-      // Navigate to dashboard
-      console.log('✅ Authentication successful, navigating to dashboard...');
+      // Navigate to dashboard immediately
       navigate('/dashboard', { replace: true });
       
     } catch (err) {
-      console.error('Auth parse error:', err);
+      console.error('❌ Auth parse error:', err);
       setError('Failed to process authentication');
-      setLoading(false);
-      
       setTimeout(() => {
         navigate('/login', { replace: true });
       }, 3000);
     }
   }, [navigate, setAuth]);
 
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        flexDirection: 'column'
-      }}>
-        <div>
-          <h2>Completing login...</h2>
-          <p>Please wait while we verify your credentials.</p>
+  // Show loading state while processing
+  return (
+    <div style={styles.container}>
+      {error ? (
+        <div style={styles.errorContainer}>
+          <h2 style={styles.errorTitle}>Authentication Error</h2>
+          <p style={styles.errorMessage}>{error}</p>
+          <p style={styles.redirectMessage}>Redirecting to login...</p>
         </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        flexDirection: 'column'
-      }}>
-        <div style={{ textAlign: 'center', color: 'red' }}>
-          <h2>Authentication Error</h2>
-          <p>{error}</p>
-          <p>Redirecting to login...</p>
+      ) : (
+        <div style={styles.loadingContainer}>
+          <h2 style={styles.loadingTitle}>Completing login...</h2>
+          <p style={styles.loadingMessage}>Please wait while we verify your credentials.</p>
+          <div style={styles.spinner}>⏳</div>
         </div>
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 };
+
+// Styles
+const styles = {
+  container: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100vh',
+    backgroundColor: '#f5f5f5',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  loadingContainer: {
+    textAlign: 'center',
+    padding: '40px',
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+  },
+  loadingTitle: {
+    margin: '0 0 10px 0',
+    color: '#333',
+    fontSize: '24px',
+  },
+  loadingMessage: {
+    margin: '0 0 20px 0',
+    color: '#666',
+    fontSize: '16px',
+  },
+  spinner: {
+    fontSize: '32px',
+    animation: 'spin 1s linear infinite',
+  },
+  errorContainer: {
+    textAlign: 'center',
+    padding: '40px',
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    border: '1px solid #ffcdd2',
+  },
+  errorTitle: {
+    margin: '0 0 10px 0',
+    color: '#d32f2f',
+    fontSize: '24px',
+  },
+  errorMessage: {
+    margin: '0 0 15px 0',
+    color: '#666',
+    fontSize: '16px',
+  },
+  redirectMessage: {
+    margin: '0',
+    color: '#999',
+    fontSize: '14px',
+  },
+};
+
+// Add CSS for spinner animation
+const styleSheet = document.createElement("style");
+styleSheet.textContent = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(styleSheet);
 
 export default AuthCallback;
