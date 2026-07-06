@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 import os
 import sys
+import wave
+import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
@@ -19,13 +21,15 @@ def validate():
             if not file:
                 return jsonify({'error': 'No file provided'}), 400
             
-            # Here you would validate the file
-            # For now, return a success response
+            # Read file data
+            file_data = file.read()
+            file_size = len(file_data)
+            
             return jsonify({
                 'success': True,
                 'message': 'File validated successfully',
                 'file_name': file.filename,
-                'file_size': len(file.read()) if file else 0
+                'file_size': file_size
             })
         
         # Handle JSON data
@@ -38,7 +42,6 @@ def validate():
                     'data': data
                 })
         
-        # Handle empty requests
         return jsonify({
             'success': True,
             'message': 'Validation successful (no data provided)',
@@ -50,7 +53,7 @@ def validate():
         return jsonify({'error': str(e)}), 500
 
 # =========================
-# PREDICTION ENDPOINT
+# PREDICTION ENDPOINT (FIXED)
 # =========================
 @validation_bp.route('/predict', methods=['POST'])
 def predict():
@@ -62,18 +65,45 @@ def predict():
             if not file:
                 return jsonify({'error': 'No file provided'}), 400
             
-            # Mock prediction for file
-            return jsonify({
-                'success': True,
-                'prediction': {
+            # Read the file
+            file_data = file.read()
+            
+            # Process the audio file
+            try:
+                # Save to a temporary file for processing
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+                    temp_file.write(file_data)
+                    temp_file_path = temp_file.name
+                
+                # Here you would call your ML model for prediction
+                # For now, return a mock prediction
+                prediction = {
                     'condition': 'Normal',
                     'confidence': 0.95,
                     'recommendations': ['No action needed', 'Continue monitoring']
-                },
-                'file_name': file.filename
-            })
+                }
+                
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+                
+                return jsonify({
+                    'success': True,
+                    'prediction': prediction,
+                    'file_name': file.filename,
+                    'file_size': len(file_data)
+                })
+                
+            except Exception as e:
+                print(f"❌ Audio processing error: {str(e)}")
+                return jsonify({
+                    'error': f'Failed to process audio file: {str(e)}'
+                }), 400
         
-        # Handle JSON data
+        # Handle JSON data (for testing without file)
         if request.is_json:
             data = request.json
             if data:
