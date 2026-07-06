@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
@@ -49,7 +49,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 Session(app)
 
 # =========================
-# CORS
+# CORS (CRITICAL FIX)
 # =========================
 allowed_origins = [
     "http://localhost:3000",
@@ -58,23 +58,18 @@ allowed_origins = [
     "https://saka-frontend.onrender.com",
     "https://backup-capstone-mbq6.onrender.com",
     "https://capstone-frontend.onrender.com",
-    "https://capstone-be-yxzd.onrender.com",
 ]
 
 CORS(
     app,
-    resources={r"/*": {
+    resources={r"/api/*": {
         "origins": allowed_origins,
         "supports_credentials": True,
-        "allow_headers": [
-            "Content-Type",
-            "Authorization",
-            "Accept",
-            "X-Requested-With"
-        ],
+        "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
     }}
 )
+
 print("=" * 60)
 print("CORS ENABLED FOR:")
 for origin in allowed_origins:
@@ -82,21 +77,20 @@ for origin in allowed_origins:
 print("=" * 60)
 
 # =========================
-# BLUEPRINT REGISTRATION
-# IMPORTANT FIX: NO url_prefix="/api/v1" HERE
+# BLUEPRINT REGISTRATION (IMPORTANT FIX)
 # =========================
-app.register_blueprint(heart_sound_bp)
-app.register_blueprint(database_bp)
-app.register_blueprint(validation_bp)
-app.register_blueprint(auth_bp)
-app.register_blueprint(test_auth_bp)
+app.register_blueprint(heart_sound_bp, url_prefix="/api/v1")
+app.register_blueprint(database_bp, url_prefix="/api/v1")
+app.register_blueprint(validation_bp, url_prefix="/api/v1")
+app.register_blueprint(auth_bp, url_prefix="/api/v1")
+app.register_blueprint(test_auth_bp, url_prefix="/api/v1")
 
 print("✅ All blueprints registered successfully")
 
 # =========================
 # ROOT ROUTE
 # =========================
-@app.route('/', methods=['GET', "OPTIONS"])
+@app.route('/', methods=['GET'])
 def index():
     return jsonify({
         "name": "SAKA Backend API",
@@ -118,6 +112,15 @@ def health():
         "status": "healthy",
         "env": os.environ.get("FLASK_ENV", "development")
     })
+
+# =========================
+# GLOBAL OPTIONS FIX (CRITICAL FOR CORS PREFLIGHT)
+# =========================
+@app.before_request
+def handle_options():
+    from flask import request
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
 
 # =========================
 # ERROR HANDLERS
