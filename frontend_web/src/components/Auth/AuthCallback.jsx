@@ -6,44 +6,70 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-
     const token = params.get('token');
     const userParam = params.get('user');
 
+    console.log('AuthCallback - Token:', token ? 'Present' : 'Missing');
+    console.log('AuthCallback - UserParam:', userParam ? 'Present' : 'Missing');
+
     if (!token || !userParam) {
+      console.error('Missing auth data');
       setError('Missing authentication data');
-      setTimeout(() => navigate('/login'), 2000);
+      setLoading(false);
+      setTimeout(() => navigate('/login', { replace: true }), 3000);
       return;
     }
 
     try {
-      // ✅ SAFE PARSE
-      const decoded = decodeURIComponent(userParam);
+      // Decode the user parameter
+      const decodedUser = decodeURIComponent(userParam);
+      console.log('Decoded user string:', decodedUser);
+      
+      const user = JSON.parse(decodedUser);
+      console.log('Parsed user object:', user);
 
-      const user =
-        typeof decoded === 'string'
-          ? JSON.parse(decoded)
-          : decoded;
-
+      // Set authentication
       setAuth(token, user);
-
+      setLoading(false);
+      
+      // Navigate to dashboard
       navigate('/dashboard', { replace: true });
-
     } catch (err) {
       console.error('Auth parse error:', err);
-      setError('Auth failed');
-      setTimeout(() => navigate('/login'), 2000);
+      setError('Failed to process authentication');
+      setLoading(false);
+      setTimeout(() => navigate('/login', { replace: true }), 3000);
     }
-  }, []);
+  }, [navigate, setAuth]);
 
-  if (error) {
-    return <div>{error}</div>;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div>
+          <h2>Completing login...</h2>
+          <p>Please wait while we verify your credentials.</p>
+        </div>
+      </div>
+    );
   }
 
-  return <div>Completing login...</div>;
+  if (error) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div style={{ textAlign: 'center', color: 'red' }}>
+          <h2>Authentication Error</h2>
+          <p>{error}</p>
+          <p>Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default AuthCallback;
