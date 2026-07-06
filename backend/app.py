@@ -59,15 +59,17 @@ CORS(
 # =========================
 # BLUEPRINTS (IMPORTANT FIX HERE)
 # =========================
-app.register_blueprint(heart_sound_bp, url_prefix="/api/v1")
-app.register_blueprint(database_bp, url_prefix="/api/v1")
-app.register_blueprint(validation_bp, url_prefix="/api/v1")
+app.register_blueprint(heart_sound_bp, url_prefix="/api/v1/screening")
+app.register_blueprint(database_bp, url_prefix="/api/v1/database")
+app.register_blueprint(validation_bp, url_prefix="/api/v1/screening")
+app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+app.register_blueprint(test_auth_bp, url_prefix="/api/v1/auth")
+
 
 # 🔥 AUTH MUST BE HERE EXACTLY
 app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
 
-app.register_blueprint(test_auth_bp, url_prefix="/api/v1")
-
+app.register_blueprint(test_auth_bp, url_prefix="/api/v1/auth")
 # =========================
 # ROUTES
 # =========================
