@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request  # Added 'request' here
 from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
@@ -37,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS CONFIGURATION - FIXED
+# CORS CONFIGURATION
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -45,12 +45,10 @@ allowed_origins = [
     "https://backup-capstone-mbq6.onrender.com",
 ]
 
-# More permissive CORS configuration
-# In app.py, update the CORS configuration
 CORS(
     app,
     resources={
-        r"/api/*": {  # Apply to all API routes
+        r"/api/*": {
             "origins": allowed_origins,
             "supports_credentials": True,
             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],

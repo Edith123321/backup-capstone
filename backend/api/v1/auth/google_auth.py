@@ -179,3 +179,15 @@ def debug():
             "has_google_secret": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
         }
     })
+
+# Add this to google_auth.py after the debug endpoint
+
+@auth_bp.route("/test-env")
+def test_env():
+    """Test if environment variables are loaded"""
+    return jsonify({
+        "GOOGLE_CLIENT_ID": GOOGLE_CLIENT_ID[:10] + "..." if GOOGLE_CLIENT_ID else "Not Set",
+        "GOOGLE_CLIENT_SECRET": GOOGLE_CLIENT_SECRET[:10] + "..." if GOOGLE_CLIENT_SECRET else "Not Set",
+        "JWT_SECRET": JWT_SECRET[:10] + "..." if JWT_SECRET else "Not Set",
+        "all_set": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
+    })
