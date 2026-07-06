@@ -20,7 +20,6 @@ if backend_dir not in sys.path:
 from api.v1.screening.heart_sound import heart_sound_bp
 from api.v1.screening.database_routes import database_bp
 from api.v1.screening.validation import validation_bp
-
 from api.v1.auth.google_auth import auth_bp
 from api.v1.auth.test_auth import test_auth_bp
 
@@ -38,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS (SAFE)
+# CORS
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -57,19 +56,12 @@ CORS(
 )
 
 # =========================
-# BLUEPRINT REGISTRATION (FIXED)
-# IMPORTANT: NO duplicate names or prefixes inside blueprints
+# BLUEPRINT REGISTRATION
 # =========================
-
 app.register_blueprint(heart_sound_bp, url_prefix="/api/v1/screening")
-
 app.register_blueprint(database_bp, url_prefix="/api/v1/database")
-
 app.register_blueprint(validation_bp, url_prefix="/api/v1/screening")
-
-# 🔥 FIX: ensure UNIQUE blueprint names inside auth file
 app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
-
 app.register_blueprint(test_auth_bp, url_prefix="/api/v1/auth/test")
 
 print("✅ Blueprints registered successfully")
