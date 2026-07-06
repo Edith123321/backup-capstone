@@ -1,116 +1,100 @@
 from flask import Blueprint, request, jsonify, redirect
 import os
 import requests
-import json
-from datetime import datetime, timedelta
 import jwt
+from datetime import datetime, timedelta
 import urllib.parse
-import logging
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
-# =====================
-# ENV
-# =====================
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+# MUST be EXACTLY backend callback
+GOOGLE_REDIRECT_URI = os.environ.get(
+    "GOOGLE_REDIRECT_URI",
+    "https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback"
+)
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://backup-capstone-mbq6.onrender.com")
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret")
 
 
-# =====================
-# LOGIN (GO TO GOOGLE)
-# =====================
+FRONTEND_URL = os.environ.get(
+    "FRONTEND_URL",
+    "https://backup-capstone-mbq6.onrender.com"
+)
+
+# =========================
+# LOGIN REDIRECT
+# =========================
 @auth_bp.route("/google/login")
 def google_login():
     if not GOOGLE_CLIENT_ID:
         return jsonify({"error": "Missing GOOGLE_CLIENT_ID"}), 500
 
-    google_auth_url = (
-        "https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={GOOGLE_CLIENT_ID}&"
-        f"redirect_uri={GOOGLE_REDIRECT_URI}&"
-        "response_type=code&"
-        "scope=openid email profile&"
-        "access_type=offline&"
-        "prompt=consent"
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={GOOGLE_CLIENT_ID}"
+        f"&redirect_uri={urllib.parse.quote(GOOGLE_REDIRECT_URI)}"
+        "&response_type=code"
+        "&scope=openid%20email%20profile"
+        "&access_type=offline"
+        "&prompt=consent"
     )
 
-    return redirect(google_auth_url)
+    return redirect(auth_url)
 
 
-# =====================
-# CALLBACK (GOOGLE RETURNS HERE)
-# =====================
+# =========================
+# CALLBACK
+# =========================
 @auth_bp.route("/google/callback")
 def google_callback():
     code = request.args.get("code")
 
     if not code:
-        return jsonify({"error": "Missing code"}), 400
+        return jsonify({"error": "No auth code provided"}), 400
 
     # Exchange code for token
-    token_url = "https://oauth2.googleapis.com/token"
+    token_response = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        },
+    )
 
-    data = {
-        "code": code,
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }
+    if token_response.status_code != 200:
+        return jsonify({"error": "Token exchange failed"}), 400
 
-    token_res = requests.post(token_url, data=data)
-
-    if token_res.status_code != 200:
-        return jsonify({"error": "Token exchange failed", "details": token_res.text}), 400
-
-    tokens = token_res.json()
-    access_token = tokens.get("access_token")
+    access_token = token_response.json().get("access_token")
 
     # Get user info
-    user_res = requests.get(
+    user_info = requests.get(
         "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-
-    if user_res.status_code != 200:
-        return jsonify({"error": "Failed to fetch user"}), 400
-
-    user = user_res.json()
+        headers={"Authorization": f"Bearer {access_token}"},
+    ).json()
 
     # Create JWT
-    jwt_token = jwt.encode(
+    token = jwt.encode(
         {
-            "email": user["email"],
-            "name": user.get("name"),
-            "exp": datetime.utcnow() + timedelta(hours=24),
+            "email": user_info["email"],
+            "name": user_info.get("name"),
+            "picture": user_info.get("picture"),
+            "exp": datetime.utcnow() + timedelta(days=1),
         },
         JWT_SECRET,
-        algorithm="HS256"
+        algorithm="HS256",
     )
 
-    # IMPORTANT: encode user safely
-    user_encoded = urllib.parse.quote(json.dumps(user))
-
-    # Redirect back to frontend
-    return redirect(
-        f"{FRONTEND_URL}/auth/callback?token={jwt_token}&user={user_encoded}"
+    # Redirect BACK to frontend callback page
+    redirect_url = (
+        f"{FRONTEND_URL}/auth/callback"
+        f"?token={token}"
+        f"&user={urllib.parse.quote(str(user_info))}"
     )
 
-
-# =====================
-# DEBUG ROUTE
-# =====================
-@auth_bp.route("/debug")
-def debug():
-    return jsonify({
-        "frontend": FRONTEND_URL,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "client_id_set": bool(GOOGLE_CLIENT_ID)
-    })
+    return redirect(redirect_url)
