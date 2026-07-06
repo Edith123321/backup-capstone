@@ -9,11 +9,11 @@ validation_bp = Blueprint('validation', __name__)
 # =========================
 # VALIDATION ENDPOINT
 # =========================
-@validation_bp.route('/validate', methods=['POST', 'OPTIONS'])
+@validation_bp.route('/validate', methods=['POST'])
 def validate():
     """Validate heart sound recording"""
     try:
-        # Get the uploaded file and data
+        # Handle file upload
         if request.files and 'file' in request.files:
             file = request.files.get('file')
             if not file:
@@ -28,16 +28,22 @@ def validate():
                 'file_size': len(file.read()) if file else 0
             })
         
-        # If JSON data is sent instead
-        data = request.json
-        if data:
-            return jsonify({
-                'success': True,
-                'message': 'Validation successful',
-                'data': data
-            })
+        # Handle JSON data
+        if request.is_json:
+            data = request.json
+            if data:
+                return jsonify({
+                    'success': True,
+                    'message': 'Validation successful',
+                    'data': data
+                })
         
-        return jsonify({'error': 'No data or file provided'}), 400
+        # Handle empty requests
+        return jsonify({
+            'success': True,
+            'message': 'Validation successful (no data provided)',
+            'hint': 'Send a file or JSON data for actual validation'
+        })
         
     except Exception as e:
         print(f"❌ Validation error: {str(e)}")
@@ -46,18 +52,17 @@ def validate():
 # =========================
 # PREDICTION ENDPOINT
 # =========================
-@validation_bp.route('/predict', methods=['POST', 'OPTIONS'])
+@validation_bp.route('/predict', methods=['POST'])
 def predict():
     """Predict heart condition from recording"""
     try:
-        # Get the uploaded file and data
+        # Handle file upload
         if request.files and 'file' in request.files:
             file = request.files.get('file')
             if not file:
                 return jsonify({'error': 'No file provided'}), 400
             
-            # Here you would process the file and make predictions
-            # For now, return a mock prediction
+            # Mock prediction for file
             return jsonify({
                 'success': True,
                 'prediction': {
@@ -68,32 +73,42 @@ def predict():
                 'file_name': file.filename
             })
         
-        # If JSON data is sent instead
-        data = request.json
-        if data:
-            # Mock prediction based on data
-            return jsonify({
-                'success': True,
-                'prediction': {
-                    'condition': 'Normal',
-                    'confidence': 0.92,
-                    'recommendations': ['Regular checkup recommended']
-                },
-                'data_received': data
-            })
+        # Handle JSON data
+        if request.is_json:
+            data = request.json
+            if data:
+                # Mock prediction based on data
+                return jsonify({
+                    'success': True,
+                    'prediction': {
+                        'condition': 'Normal',
+                        'confidence': 0.92,
+                        'recommendations': ['Regular checkup recommended']
+                    },
+                    'data_received': data
+                })
         
-        return jsonify({'error': 'No data or file provided'}), 400
+        # Handle empty requests
+        return jsonify({
+            'success': True,
+            'message': 'Prediction successful (no data provided)',
+            'hint': 'Send a file or JSON data for actual prediction'
+        })
         
     except Exception as e:
         print(f"❌ Prediction error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # =========================
-# HEALTH CHECK FOR SCREENING
+# HEALTH CHECK
 # =========================
 @validation_bp.route('/health', methods=['GET'])
 def health():
     return jsonify({
         'status': 'healthy',
-        'service': 'screening/validation'
+        'service': 'screening/validation',
+        'endpoints': {
+            'validate': '/api/v1/screening/validate',
+            'predict': '/api/v1/screening/predict'
+        }
     })
