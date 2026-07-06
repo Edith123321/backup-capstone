@@ -42,9 +42,11 @@ export const AuthProvider = ({ children }) => {
 
 
 const login = () => {
-  const url = `${API_baseURL}/api/v1/auth/google/login`;
+  alert("NEW LOGIN FUNCTION");
 
-  console.log("🚀 Redirecting to backend login:", url);
+  const url = "https://capstone-be-yxzd.onrender.com/api/v1/auth/google/login";
+
+  console.log(url);
 
   window.location.assign(url);
 };
