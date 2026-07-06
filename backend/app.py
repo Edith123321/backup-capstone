@@ -37,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS CONFIGURATION - CLEAN VERSION
+# CORS CONFIGURATION
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -104,8 +104,17 @@ def server_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
 # =========================
-# MAIN
+# MAIN - FIXED FOR RENDER
 # =========================
 if __name__ == "__main__":
+    # Get port from environment variable or default to 5001
     port = int(os.environ.get("PORT", 5001))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    
+    # For Render, we need to bind to 0.0.0.0
+    # debug=False is important for production
+    app.run(
+        host="0.0.0.0", 
+        port=port, 
+        debug=False,
+        threaded=True
+    )
