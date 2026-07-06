@@ -81,12 +81,31 @@ export const screeningService = {
     const res = await api.get(`/screening/results/${resultId}`);
     return res.data;
   },
+
+  // ========== NEW: Validate heart sound ==========
+  validate: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await api.post('/screening/validate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    return res.data;
+  },
+
+  // ========== NEW: Get screening history ==========
+  getHistory: async (patientId) => {
+    const res = await api.get(`/screening/history/${patientId}`);
+    return res.data;
+  },
 };
 
 // =====================
 // DATABASE API
 // =====================
 export const databaseApi = {
+  // ===== PATIENTS =====
   getPatients: async (doctorId) => {
     const res = await api.get(`/database/patients?doctor_id=${doctorId}`);
     return res.data;
@@ -102,6 +121,37 @@ export const databaseApi = {
     return res.data;
   },
 
+  // ========== NEW: Update patient ==========
+  updatePatient: async (patientId, data) => {
+    const res = await api.put(`/database/patients/${patientId}`, data);
+    return res.data;
+  },
+
+  // ========== NEW: Delete patient ==========
+  deletePatient: async (patientId) => {
+    const res = await api.delete(`/database/patients/${patientId}`);
+    return res.data;
+  },
+
+  // ========== NEW: Update RHD status ==========
+  updatePatientRHDStatus: async (patientId, data) => {
+    const res = await api.put(`/database/patients/${patientId}/rhd-status`, data);
+    return res.data;
+  },
+
+  // ========== NEW: Get patients by RHD status ==========
+  getPatientsByRHDStatus: async (doctorId, rhdStatus) => {
+    const res = await api.get(`/database/patients/rhd-status/${rhdStatus}?doctor_id=${doctorId}`);
+    return res.data;
+  },
+
+  // ========== NEW: Get RHD summary ==========
+  getRHDSummary: async (doctorId) => {
+    const res = await api.get(`/database/patients/rhd-summary?doctor_id=${doctorId}`);
+    return res.data;
+  },
+
+  // ===== TRIAGE =====
   getTriageByDoctor: async (doctorId) => {
     const res = await api.get(`/database/triage/doctor/${doctorId}`);
     return res.data;
@@ -122,6 +172,7 @@ export const databaseApi = {
     return res.data;
   },
 
+  // ===== RECORDINGS =====
   getRecordings: async (patientId) => {
     const res = await api.get(`/database/recordings/patient/${patientId}`);
     return res.data;
@@ -132,6 +183,7 @@ export const databaseApi = {
     return res.data;
   },
 
+  // ===== DEVICES =====
   getDevices: async (doctorId) => {
     const res = await api.get(`/database/devices/${doctorId}`);
     return res.data;
@@ -162,6 +214,45 @@ export const patientService = {
       return [];
     }
   },
+
+  // ========== NEW: Get patient with full details ==========
+  getPatientDetails: async (patientId) => {
+    try {
+      const [patientRes, triageRes, recordingsRes] = await Promise.all([
+        databaseApi.getPatient(patientId),
+        databaseApi.getTriageByPatient(patientId),
+        databaseApi.getRecordings(patientId),
+      ]);
+
+      return {
+        patient: patientRes.success ? patientRes.patient : null,
+        triage: triageRes.success ? triageRes.triage : [],
+        recordings: recordingsRes.success ? recordingsRes.recordings : [],
+      };
+    } catch (error) {
+      console.error('Error fetching patient details:', error);
+      throw error;
+    }
+  },
+
+  // ========== NEW: Get RHD patients summary ==========
+  getRHDSummary: async (doctorId) => {
+    try {
+      const res = await databaseApi.getRHDSummary(doctorId);
+      if (res.success) return res.summary;
+      throw new Error('Failed to fetch RHD summary');
+    } catch (error) {
+      console.warn('Error fetching RHD summary:', error);
+      return {
+        total: 0,
+        confirmed: 0,
+        suspected: 0,
+        none: 0,
+        unknown: 0,
+        patients: []
+      };
+    }
+  }
 };
 
 // =====================
@@ -190,6 +281,31 @@ export const statsService = {
         todayScreenings: 0,
         accuracy: '98.4%',
         flagged: 0,
+      };
+    }
+  },
+
+  // ========== NEW: Get RHD stats ==========
+  getRHDStats: async (doctorId) => {
+    try {
+      const summary = await patientService.getRHDSummary(doctorId);
+      return {
+        totalPatients: summary.total || 0,
+        confirmedRHD: summary.confirmed || 0,
+        suspectedRHD: summary.suspected || 0,
+        noRHD: summary.none || 0,
+        unknown: summary.unknown || 0,
+        rhdRate: summary.total > 0 ? ((summary.confirmed + summary.suspected) / summary.total * 100).toFixed(1) : 0,
+      };
+    } catch (error) {
+      console.warn('Error fetching RHD stats:', error);
+      return {
+        totalPatients: 0,
+        confirmedRHD: 0,
+        suspectedRHD: 0,
+        noRHD: 0,
+        unknown: 0,
+        rhdRate: 0,
       };
     }
   }

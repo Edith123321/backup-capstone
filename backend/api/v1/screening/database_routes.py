@@ -319,3 +319,80 @@ def calculate_triage():
 
     except Exception as e:
         return create_cors_response({'error': str(e)}, 500)
+# Add these routes to database_routes.py
+
+# =======================
+# RHD STATUS ROUTES
+# =======================
+
+@database_bp.route('/patients/<patient_id>/rhd-status', methods=['PUT'])
+def update_patient_rhd_status(patient_id):
+    """Update a patient's RHD status"""
+    try:
+        data = request.json
+        success = db.update_patient_rhd_status(patient_id, data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'RHD status updated successfully'
+            })
+        
+        return jsonify({'error': 'Failed to update RHD status'}), 500
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@database_bp.route('/patients/rhd-status/<rhd_status>', methods=['GET'])
+def get_patients_by_rhd_status(rhd_status):
+    """Get patients filtered by RHD status"""
+    try:
+        doctor_id = request.args.get('doctor_id')
+        
+        if not doctor_id:
+            return jsonify({'error': 'doctor_id required'}), 400
+        
+        patients = db.get_patients_by_rhd_status(doctor_id, rhd_status)
+        
+        return jsonify({
+            'success': True,
+            'patients': patients
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@database_bp.route('/patients/rhd-summary', methods=['GET'])
+def get_rhd_summary():
+    """Get summary of RHD status for a doctor's patients"""
+    try:
+        doctor_id = request.args.get('doctor_id')
+        
+        if not doctor_id:
+            return jsonify({'error': 'doctor_id required'}), 400
+        
+        patients = db.get_patients_by_doctor(doctor_id)
+        
+        summary = {
+            'total': len(patients),
+            'confirmed': 0,
+            'suspected': 0,
+            'none': 0,
+            'unknown': 0,
+            'patients': patients
+        }
+        
+        for patient in patients:
+            status = patient.get('rhd_status', 'unknown')
+            if status in summary:
+                summary[status] += 1
+        
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
