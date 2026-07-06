@@ -14,59 +14,42 @@ const AuthCallback = () => {
 
     console.log('🔐 Processing authentication callback...');
 
-    // Check for missing data
     if (!token || !userParam) {
-      console.error('❌ Missing token or user data');
-      setError('Missing authentication data');
-      setTimeout(() => {
-        navigate('/login', { replace: true });
-      }, 2000);
+      console.error('❌ Missing auth data');
+      navigate('/login', { replace: true });
       return;
     }
-
     try {
-      // Decode and parse user data
-      const decodedUser = decodeURIComponent(userParam);
-      const user = JSON.parse(decodedUser);
+      const user = JSON.parse(decodeURIComponent(userParam));
+      console.log(`✅ Authenticated: ${user.email}`);
       
-      console.log(`✅ Authenticated as: ${user.email}`);
-      
-      // Set authentication
-      setAuth(token, user);
-      
-      // Navigate to dashboard immediately
+      // Navigate FIRST - this will unmount the component
       navigate('/dashboard', { replace: true });
       
-    } catch (err) {
-      console.error('❌ Auth parse error:', err);
-      setError('Failed to process authentication');
+      // Then set auth (this will run in the background)
+      // The component will be unmounted by then
       setTimeout(() => {
-        navigate('/login', { replace: true });
-      }, 3000);
+        setAuth(token, user);
+        console.log('✅ Auth set in background');
+      }, 0);
+      
+    } catch (err) {
+      console.error('❌ Auth error:', err);
+      navigate('/login', { replace: true });
     }
   }, [navigate, setAuth]);
 
-  // Show loading state while processing
   return (
     <div style={styles.container}>
-      {error ? (
-        <div style={styles.errorContainer}>
-          <h2 style={styles.errorTitle}>Authentication Error</h2>
-          <p style={styles.errorMessage}>{error}</p>
-          <p style={styles.redirectMessage}>Redirecting to login...</p>
-        </div>
-      ) : (
-        <div style={styles.loadingContainer}>
-          <h2 style={styles.loadingTitle}>Completing login...</h2>
-          <p style={styles.loadingMessage}>Please wait while we verify your credentials.</p>
-          <div style={styles.spinner}>⏳</div>
-        </div>
-      )}
+      <div style={styles.loadingContainer}>
+        <h2 style={styles.loadingTitle}>Completing login...</h2>
+        <p style={styles.loadingMessage}>Please wait...</p>
+        <div style={styles.spinner}>⏳</div>
+      </div>
     </div>
   );
 };
 
-// Styles
 const styles = {
   container: {
     display: 'flex',
@@ -74,7 +57,6 @@ const styles = {
     alignItems: 'center',
     height: '100vh',
     backgroundColor: '#f5f5f5',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
   loadingContainer: {
     textAlign: 'center',
@@ -97,32 +79,9 @@ const styles = {
     fontSize: '32px',
     animation: 'spin 1s linear infinite',
   },
-  errorContainer: {
-    textAlign: 'center',
-    padding: '40px',
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-    border: '1px solid #ffcdd2',
-  },
-  errorTitle: {
-    margin: '0 0 10px 0',
-    color: '#d32f2f',
-    fontSize: '24px',
-  },
-  errorMessage: {
-    margin: '0 0 15px 0',
-    color: '#666',
-    fontSize: '16px',
-  },
-  redirectMessage: {
-    margin: '0',
-    color: '#999',
-    fontSize: '14px',
-  },
 };
 
-// Add CSS for spinner animation
+// Add spin animation
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
   @keyframes spin {
