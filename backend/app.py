@@ -37,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS CONFIGURATION - FIXED
+# CORS CONFIGURATION - SIMPLIFIED (ONLY ONE)
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -45,50 +45,16 @@ allowed_origins = [
     "https://backup-capstone-mbq6.onrender.com",
 ]
 
-# Apply CORS to ALL routes with proper configuration
+# ONLY use Flask-CORS, no manual handlers
 CORS(
     app,
-    resources={
-        r"/*": {  # Changed from origins to resources for all routes
-            "origins": allowed_origins,
-            "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-            "expose_headers": ["Content-Type", "Authorization"],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            "max_age": 3600
-        }
-    }
+    origins=allowed_origins,
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    expose_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    max_age=3600
 )
-
-# =========================
-# MANUAL CORS HANDLERS (Fallback for all routes)
-# =========================
-@app.after_request
-def after_request(response):
-    """Add CORS headers to every response"""
-    origin = request.headers.get('Origin')
-    if origin in allowed_origins:
-        response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '3600')
-    return response
-
-# Handle OPTIONS requests explicitly for ALL paths
-@app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
-@app.route('/<path:path>', methods=['OPTIONS'])
-def handle_options(path):
-    """Handle preflight requests for all routes"""
-    response = jsonify({})
-    origin = request.headers.get('Origin')
-    if origin in allowed_origins:
-        response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '3600')
-    return response, 200
 
 # =========================
 # BLUEPRINT REGISTRATION
@@ -134,8 +100,7 @@ def test_cors():
     return jsonify({
         "message": "CORS is working!",
         "origin": request.headers.get('Origin'),
-        "method": request.method,
-        "headers": dict(request.headers)
+        "method": request.method
     })
 
 # =========================
