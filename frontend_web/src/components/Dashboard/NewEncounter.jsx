@@ -22,6 +22,8 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import { CircularProgress } from '@mui/material';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com';
+
 const NewEncounter = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -29,7 +31,7 @@ const NewEncounter = () => {
   const [error, setError] = useState(null);
   const [existingPatients, setExistingPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Section 1: Patient Information
   const [patient, setPatient] = useState({
@@ -70,7 +72,8 @@ const NewEncounter = () => {
     audioUrl: null,
     isValidHeartSound: null,
     qualityScore: null,
-    validationIssues: []
+    validationIssues: [],
+    duration: 0
   });
 
   // Section 4: Results
@@ -116,6 +119,7 @@ const NewEncounter = () => {
         medical_history: selected.medical_history || ''
       });
       setSearchTerm(selected.name || '');
+      setShowSearchResults(false);
     }
   };
 
@@ -144,7 +148,8 @@ const NewEncounter = () => {
         prediction: null,
         isValidHeartSound: null,
         qualityScore: null,
-        validationIssues: []
+        validationIssues: [],
+        duration: 0
       });
     }
   };
@@ -154,6 +159,7 @@ const NewEncounter = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       const audioChunks = [];
+      let startTime = Date.now();
 
       mediaRecorder.ondataavailable = event => {
         audioChunks.push(event.data);
@@ -163,6 +169,7 @@ const NewEncounter = () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
         const audioUrl = URL.createObjectURL(audioBlob);
         const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+        const duration = (Date.now() - startTime) / 1000;
         
         setRecording({
           ...recording,
@@ -173,7 +180,8 @@ const NewEncounter = () => {
           prediction: null,
           isValidHeartSound: null,
           qualityScore: null,
-          validationIssues: []
+          validationIssues: [],
+          duration: duration
         });
         
         stream.getTracks().forEach(track => track.stop());
@@ -190,7 +198,7 @@ const NewEncounter = () => {
       }, 10000);
     } catch (error) {
       console.error('Error recording:', error);
-      alert('Please allow microphone access to record.');
+      setError('Please allow microphone access to record.');
     }
   };
 
@@ -200,7 +208,7 @@ const NewEncounter = () => {
 
   const analyzeHeartSound = async () => {
     if (!recording.file) {
-      alert('Please upload or record a heart sound first.');
+      setError('Please upload or record a heart sound first.');
       return;
     }
 
@@ -209,29 +217,49 @@ const NewEncounter = () => {
 
     try {
       // Step 1: Validate heart sound quality
-      const validationResult = await validateHeartSound(recording.file);
+      const formData = new FormData();
+      formData.append('file', recording.file);
       
-      if (!validationResult.is_valid) {
+      let validationResult = { is_valid: true, quality_score: 0.8, issues: [] };
+      try {
+        const validationResponse = await fetch(`${API_BASE_URL}/api/v1/screening/validate`, {
+          method: 'POST',
+          body: formData
+        });
+        validationResult = await validationResponse.json();
+      } catch (e) {
+        console.warn('Validation endpoint not available, proceeding with default validation');
+      }
+      
+      if (validationResult && validationResult.is_valid === false) {
         setRecording({
           ...recording,
           isProcessing: false,
           isValidHeartSound: false,
-          qualityScore: validationResult.quality_score,
-          validationIssues: validationResult.issues || [],
+          qualityScore: validationResult.quality_score || 0.3,
+          validationIssues: validationResult.issues || ['Recording quality is poor'],
           prediction: null
         });
         return;
       }
 
       // Step 2: Run AI prediction
-      const result = await screeningService.predict(recording.file);
+      const predictFormData = new FormData();
+      predictFormData.append('file', recording.file);
+      
+      const predictResponse = await fetch(`${API_BASE_URL}/api/v1/screening/predict`, {
+        method: 'POST',
+        body: predictFormData
+      });
+      
+      const result = await predictResponse.json();
       
       if (result.success) {
         setRecording({
           ...recording,
           isProcessing: false,
           isValidHeartSound: true,
-          qualityScore: validationResult.quality_score,
+          qualityScore: validationResult?.quality_score || 0.8,
           validationIssues: [],
           prediction: result
         });
@@ -240,26 +268,8 @@ const NewEncounter = () => {
       }
     } catch (error) {
       console.error('Analysis error:', error);
-      setError(error.message);
+      setError(error.message || 'Failed to analyze heart sound. Please try again.');
       setRecording({ ...recording, isProcessing: false });
-    }
-  };
-
-  const validateHeartSound = async (file) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch('/api/v1/screening/validate', {
-        method: 'POST',
-        body: formData
-      });
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Validation error:', error);
-      return { is_valid: true, quality_score: 0.8, issues: [] };
     }
   };
 
@@ -271,12 +281,21 @@ const NewEncounter = () => {
       // Step 1: Create or get patient
       let patientId;
       if (patient.isNew) {
-        const patientResponse = await databaseApi.createPatient({
-          ...patient,
+        const patientData = {
+          name: patient.name,
+          age: parseInt(patient.age) || 0,
+          gender: patient.gender || 'Unknown',
+          date_of_birth: patient.date_of_birth || '',
+          contact: patient.contact || '',
+          address: patient.address || '',
+          emergency_contact: patient.emergency_contact || '',
+          medical_history: patient.medical_history || '',
           doctor_id: user.id
-        });
+        };
+        
+        const patientResponse = await databaseApi.createPatient(patientData);
         if (!patientResponse.success) {
-          throw new Error('Failed to create patient');
+          throw new Error(patientResponse.error || 'Failed to create patient');
         }
         patientId = patientResponse.patient_id;
       } else {
@@ -284,38 +303,55 @@ const NewEncounter = () => {
       }
 
       // Step 2: Create triage record
-      const triageResponse = await databaseApi.createTriage({
-        ...triage,
+      const triageData = {
         patient_id: patientId,
-        doctor_id: user.id
-      });
+        doctor_id: user.id,
+        respiratory_rate: parseFloat(triage.respiratory_rate) || 0,
+        heart_rate: parseFloat(triage.heart_rate) || 0,
+        oxygen_saturation: parseFloat(triage.oxygen_saturation) || 100,
+        temperature: parseFloat(triage.temperature) || 37,
+        blood_pressure_systolic: parseInt(triage.blood_pressure_systolic) || 0,
+        blood_pressure_diastolic: parseInt(triage.blood_pressure_diastolic) || 0,
+        consciousness_level: triage.consciousness_level || 'alert',
+        pain_score: parseInt(triage.pain_score) || 0,
+        chief_complaint: triage.chief_complaint || '',
+        symptoms: triage.symptoms || '',
+        notes: triage.notes || ''
+      };
+      
+      const triageResponse = await databaseApi.createTriage(triageData);
       if (!triageResponse.success) {
-        throw new Error('Failed to create triage record');
+        throw new Error(triageResponse.error || 'Failed to create triage record');
       }
 
       // Step 3: Save heart sound recording and prediction
-      if (recording.prediction) {
+      if (recording.file && recording.prediction) {
         const formData = new FormData();
         formData.append('file', recording.file);
         formData.append('patient_id', patientId);
         formData.append('doctor_id', user.id);
-        formData.append('prediction', recording.prediction.prediction);
-        formData.append('confidence', recording.prediction.confidence);
-        formData.append('probabilities', JSON.stringify(recording.prediction.probabilities));
-        formData.append('quality_score', recording.qualityScore || '');
+        formData.append('prediction', recording.prediction.prediction || 'Unknown');
+        formData.append('confidence', String(recording.prediction.confidence || 0));
+        formData.append('probabilities', JSON.stringify(recording.prediction.probabilities || {}));
+        formData.append('quality_score', String(recording.qualityScore || 0));
+        formData.append('duration', String(recording.duration || 0));
         
-        await fetch('/api/v1/database/recordings', {
-          method: 'POST',
-          body: formData
-        });
+        try {
+          await databaseApi.saveRecording(formData);
+        } catch (recordingError) {
+          console.error('Error saving recording:', recordingError);
+          // Don't fail the whole encounter if recording fails
+        }
       }
 
-      // Step 4: Show success and navigate to patient profile
+      // Step 4: Show success
       setEncounterResult({
         success: true,
         patientId: patientId,
-        message: 'Patient encounter completed successfully'
+        message: '✅ Patient encounter completed successfully!'
       });
+
+      setLoading(false);
 
       // Navigate to patient profile after 2 seconds
       setTimeout(() => {
@@ -324,7 +360,7 @@ const NewEncounter = () => {
 
     } catch (error) {
       console.error('Save encounter error:', error);
-      setError(error.message);
+      setError(error.message || 'Failed to save encounter. Please try again.');
       setLoading(false);
     }
   };
@@ -332,7 +368,6 @@ const NewEncounter = () => {
   const renderPatientSection = () => (
     <div className="encounter-section">
       <div className="section-header">
-        {/* <PersonAddIcon className="section-icon" /> */}
         <h2 className='section-badge'>Patient Information</h2>
       </div>
       
@@ -343,10 +378,15 @@ const NewEncounter = () => {
             type="text"
             placeholder="Search existing patient by name or contact..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setShowSearchResults(true);
+            }}
+            onFocus={() => setShowSearchResults(true)}
+            onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
           />
         </div>
-        {searchTerm && filteredPatients.length > 0 && (
+        {showSearchResults && searchTerm && filteredPatients.length > 0 && (
           <div className="search-results">
             {filteredPatients.slice(0, 5).map(p => (
               <div 
@@ -358,6 +398,13 @@ const NewEncounter = () => {
                 <span className="result-details">Age: {p.age} • Contact: {p.contact}</span>
               </div>
             ))}
+          </div>
+        )}
+        {showSearchResults && searchTerm && filteredPatients.length === 0 && (
+          <div className="search-results">
+            <div className="search-result-item no-results">
+              <span>No patients found. Enter details below to create new patient.</span>
+            </div>
           </div>
         )}
       </div>
@@ -382,6 +429,8 @@ const NewEncounter = () => {
             placeholder="Enter age in years"
             value={patient.age}
             onChange={handlePatientChange}
+            min="0"
+            max="150"
           />
         </div>
         <div className="form-group">
@@ -449,9 +498,7 @@ const NewEncounter = () => {
   const renderTriageSection = () => (
     <div className="encounter-section">
       <div className="section-header">
-        {/* <FavoriteIcon className="section-icon" /> */}
         <h2 className='section-badge'>Triage Assessment</h2>
-        {/* <span className="section-badge">Jones Triage System</span> */}
       </div>
       
       <div className="form-grid">
@@ -463,6 +510,8 @@ const NewEncounter = () => {
             placeholder="e.g. 16"
             value={triage.respiratory_rate}
             onChange={handleTriageChange}
+            min="0"
+            max="60"
           />
         </div>
         <div className="form-group">
@@ -473,6 +522,8 @@ const NewEncounter = () => {
             placeholder="e.g. 72"
             value={triage.heart_rate}
             onChange={handleTriageChange}
+            min="0"
+            max="250"
           />
         </div>
         <div className="form-group">
@@ -483,6 +534,8 @@ const NewEncounter = () => {
             placeholder="e.g. 98"
             value={triage.oxygen_saturation}
             onChange={handleTriageChange}
+            min="0"
+            max="100"
           />
         </div>
         <div className="form-group">
@@ -494,6 +547,8 @@ const NewEncounter = () => {
             placeholder="e.g. 37.0"
             value={triage.temperature}
             onChange={handleTriageChange}
+            min="0"
+            max="45"
           />
         </div>
         <div className="form-group">
@@ -504,6 +559,8 @@ const NewEncounter = () => {
             placeholder="e.g. 120"
             value={triage.blood_pressure_systolic}
             onChange={handleTriageChange}
+            min="0"
+            max="300"
           />
         </div>
         <div className="form-group">
@@ -514,6 +571,8 @@ const NewEncounter = () => {
             placeholder="e.g. 80"
             value={triage.blood_pressure_diastolic}
             onChange={handleTriageChange}
+            min="0"
+            max="200"
           />
         </div>
         <div className="form-group">
@@ -573,9 +632,7 @@ const NewEncounter = () => {
   const renderRecordingSection = () => (
     <div className="encounter-section">
       <div className="section-header">
-        {/* <UploadFileIcon className="section-icon" /> */}
         <h2 className='section-badge'>Heart Sound Recording</h2>
-        {/* <span className="section-badge">Required for AI Analysis</span> */}
       </div>
       
       <div className="recording-controls">
@@ -620,6 +677,7 @@ const NewEncounter = () => {
             <button 
               className="btn-icon" 
               onClick={() => {
+                URL.revokeObjectURL(recording.audioUrl);
                 setRecording({
                   ...recording,
                   file: null,
@@ -627,7 +685,8 @@ const NewEncounter = () => {
                   prediction: null,
                   isValidHeartSound: null,
                   qualityScore: null,
-                  validationIssues: []
+                  validationIssues: [],
+                  duration: 0
                 });
               }}
             >
@@ -636,9 +695,9 @@ const NewEncounter = () => {
           </div>
         )}
 
-        {recording.file && !recording.prediction && !recording.isProcessing && !recording.isValidHeartSound === false && (
+        {recording.file && !recording.prediction && !recording.isProcessing && recording.isValidHeartSound !== false && (
           <button
-            className="btn-primary"
+            className="btn-primary analyze-btn"
             onClick={analyzeHeartSound}
           >
             <PlayArrowIcon />
@@ -669,6 +728,7 @@ const NewEncounter = () => {
               <button 
                 className="btn-secondary"
                 onClick={() => {
+                  URL.revokeObjectURL(recording.audioUrl);
                   setRecording({
                     ...recording,
                     file: null,
@@ -676,7 +736,8 @@ const NewEncounter = () => {
                     prediction: null,
                     isValidHeartSound: null,
                     qualityScore: null,
-                    validationIssues: []
+                    validationIssues: [],
+                    duration: 0
                   });
                 }}
               >
@@ -692,7 +753,7 @@ const NewEncounter = () => {
             <h3>AI Prediction Result</h3>
             <div className={`prediction-badge ${recording.prediction.prediction === 'Normal' ? 'normal' : 'abnormal'}`}>
               <span className="prediction-label">{recording.prediction.prediction}</span>
-              <span className="prediction-confidence">{recording.prediction.confidence.toFixed(1)}% confidence</span>
+              <span className="prediction-confidence">{recording.prediction.confidence?.toFixed(1) || '0.0'}% confidence</span>
             </div>
             <div className="prediction-details">
               <div className="prob-bar">
@@ -700,20 +761,20 @@ const NewEncounter = () => {
                 <div className="bar-track">
                   <div 
                     className="bar-fill normal"
-                    style={{ width: `${recording.prediction.probabilities.Normal * 100}%` }}
+                    style={{ width: `${(recording.prediction.probabilities?.Normal || 0) * 100}%` }}
                   ></div>
                 </div>
-                <span>{(recording.prediction.probabilities.Normal * 100).toFixed(1)}%</span>
+                <span>{((recording.prediction.probabilities?.Normal || 0) * 100).toFixed(1)}%</span>
               </div>
               <div className="prob-bar">
                 <span>Abnormal</span>
                 <div className="bar-track">
                   <div 
                     className="bar-fill abnormal"
-                    style={{ width: `${recording.prediction.probabilities.RHD * 100}%` }}
+                    style={{ width: `${(recording.prediction.probabilities?.RHD || 0) * 100}%` }}
                   ></div>
                 </div>
-                <span>{(recording.prediction.probabilities.RHD * 100).toFixed(1)}%</span>
+                <span>{((recording.prediction.probabilities?.RHD || 0) * 100).toFixed(1)}%</span>
               </div>
             </div>
             {recording.qualityScore && (
