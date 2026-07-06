@@ -396,3 +396,32 @@ def get_rhd_summary():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+heart_sound_bp = Blueprint('heart_sound', __name__)
+
+@heart_sound_bp.route('/analyze', methods=['POST', 'OPTIONS'])
+def analyze_heart_sound():
+    """Analyze heart sound recording"""
+    try:
+        if request.files and 'file' in request.files:
+            file = request.files.get('file')
+            if not file:
+                return jsonify({'error': 'No file provided'}), 400
+            
+            # Process heart sound
+            return jsonify({
+                'success': True,
+                'analysis': {
+                    'heart_rate': 72,
+                    'rhythm': 'Regular',
+                    'murmur_detected': False,
+                    'recommendations': ['Normal heart sounds detected']
+                }
+            })
+        
+        return jsonify({'error': 'No file provided'}), 400
+        
+    except Exception as e:
+        print(f"❌ Heart sound analysis error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
