@@ -6,46 +6,80 @@ const AuthCallback = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [error, setError] = useState(null);
+  const [processed, setProcessed] = useState(false);
 
   useEffect(() => {
+    // Prevent processing if already done
+    if (processed) {
+      console.log('⏭️ Already processed, skipping...');
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const userParam = params.get('user');
 
     console.log('🔐 Processing authentication callback...');
 
+    // Check for missing data
     if (!token || !userParam) {
-      console.error('❌ Missing auth data');
-      navigate('/login', { replace: true });
+      console.error('❌ Missing token or user data');
+      setError('Missing authentication data');
+      setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 2000);
       return;
     }
+
     try {
-      const user = JSON.parse(decodeURIComponent(userParam));
-      console.log(`✅ Authenticated: ${user.email}`);
+      // Decode and parse user data
+      const decodedUser = decodeURIComponent(userParam);
+      const user = JSON.parse(decodedUser);
       
-      // Navigate FIRST - this will unmount the component
-      navigate('/dashboard', { replace: true });
+      console.log(`✅ Authenticated as: ${user.email}`);
+      console.log('✅ Setting auth for user:', user.email);
       
-      // Then set auth (this will run in the background)
-      // The component will be unmounted by then
+      // Mark as processed BEFORE setting auth to prevent re-render issues
+      setProcessed(true);
+      
+      // Set authentication
+      setAuth(token, user);
+      
+      // Navigate to dashboard with a small delay to ensure state updates
       setTimeout(() => {
-        setAuth(token, user);
-        console.log('✅ Auth set in background');
-      }, 0);
+        navigate('/dashboard', { replace: true });
+      }, 50);
       
     } catch (err) {
-      console.error('❌ Auth error:', err);
-      navigate('/login', { replace: true });
+      console.error('❌ Auth parse error:', err);
+      setError('Failed to process authentication');
+      setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 3000);
     }
-  }, [navigate, setAuth]);
 
+    // Cleanup function to prevent memory leaks
+    return () => {
+      console.log('🧹 Cleaning up AuthCallback...');
+    };
+  }, [navigate, setAuth, processed]);
+
+  // Show loading state while processing
   return (
     <div style={styles.container}>
-      <div style={styles.loadingContainer}>
-        <h2 style={styles.loadingTitle}>Completing login...</h2>
-        <p style={styles.loadingMessage}>Please wait...</p>
-        <div style={styles.spinner}>⏳</div>
-      </div>
+      {error ? (
+        <div style={styles.errorContainer}>
+          <h2 style={styles.errorTitle}>Authentication Error</h2>
+          <p style={styles.errorMessage}>{error}</p>
+          <p style={styles.redirectMessage}>Redirecting to login...</p>
+        </div>
+      ) : (
+        <div style={styles.loadingContainer}>
+          <h2 style={styles.loadingTitle}>Completing login...</h2>
+          <p style={styles.loadingMessage}>Please wait while we verify your credentials.</p>
+          <div style={styles.spinner}>⏳</div>
+        </div>
+      )}
     </div>
   );
 };
@@ -57,6 +91,7 @@ const styles = {
     alignItems: 'center',
     height: '100vh',
     backgroundColor: '#f5f5f5',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
   loadingContainer: {
     textAlign: 'center',
@@ -79,9 +114,32 @@ const styles = {
     fontSize: '32px',
     animation: 'spin 1s linear infinite',
   },
+  errorContainer: {
+    textAlign: 'center',
+    padding: '40px',
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    border: '1px solid #ffcdd2',
+  },
+  errorTitle: {
+    margin: '0 0 10px 0',
+    color: '#d32f2f',
+    fontSize: '24px',
+  },
+  errorMessage: {
+    margin: '0 0 15px 0',
+    color: '#666',
+    fontSize: '16px',
+  },
+  redirectMessage: {
+    margin: '0',
+    color: '#999',
+    fontSize: '14px',
+  },
 };
 
-// Add spin animation
+// Add CSS for spinner animation
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
   @keyframes spin {
