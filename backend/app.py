@@ -37,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS
+# CORS CONFIGURATION - FIXED
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -45,15 +45,45 @@ allowed_origins = [
     "https://backup-capstone-mbq6.onrender.com",
 ]
 
+# More permissive CORS configuration
+# In app.py, update the CORS configuration
 CORS(
     app,
-    resources={r"/*": {
-        "origins": allowed_origins,
-        "supports_credentials": True,
-        "allow_headers": ["Content-Type", "Authorization"],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    }}
+    resources={
+        r"/api/*": {  # Apply to all API routes
+            "origins": allowed_origins,
+            "supports_credentials": True,
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+            "expose_headers": ["Content-Type", "Authorization"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+            "max_age": 3600
+        }
+    }
 )
+
+# Add CORS headers manually as a fallback
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
+
+# Handle OPTIONS requests explicitly
+@app.route('/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    response = jsonify({})
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '3600')
+    return response, 200
 
 # =========================
 # BLUEPRINT REGISTRATION

@@ -8,12 +8,11 @@ from services.database import db
 
 database_bp = Blueprint('database', __name__)
 
-
 # =======================
 # PATIENT ROUTES
 # =======================
 
-@database_bp.route('/database/patients', methods=['GET', 'OPTIONS'])
+@database_bp.route('/patients', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_patients():
     try:
         doctor_id = request.args.get('doctor_id')
@@ -32,7 +31,7 @@ def get_patients():
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/patients', methods=['POST', 'OPTIONS'])
+@database_bp.route('/patients', methods=['POST', 'OPTIONS'])  # Removed /database
 def create_patient():
     try:
         data = request.json
@@ -52,7 +51,7 @@ def create_patient():
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/patients/<patient_id>', methods=['GET', 'OPTIONS'])
+@database_bp.route('/patients/<patient_id>', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_patient(patient_id):
     try:
         patient = db.get_patient_by_id(patient_id)
@@ -70,7 +69,7 @@ def get_patient(patient_id):
 # TRIAGE ROUTES
 # =======================
 
-@database_bp.route('/database/triage', methods=['POST', 'OPTIONS'])
+@database_bp.route('/triage', methods=['POST', 'OPTIONS'])  # Removed /database
 def create_triage():
     try:
         data = request.json
@@ -90,7 +89,7 @@ def create_triage():
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/triage/doctor/<doctor_id>', methods=['GET',    'OPTIONS'])
+@database_bp.route('/triage/doctor/<doctor_id>', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_triage_by_doctor(doctor_id):
     try:
         triage_records = db.get_triage_by_doctor(doctor_id)
@@ -104,7 +103,7 @@ def get_triage_by_doctor(doctor_id):
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/triage/patient/<patient_id>', methods=['GET', 'OPTIONS'])
+@database_bp.route('/triage/patient/<patient_id>', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_triage_by_patient(patient_id):
     try:
         triage_records = db.get_triage_by_patient(patient_id)
@@ -122,7 +121,7 @@ def get_triage_by_patient(patient_id):
 # RECORDINGS
 # =======================
 
-@database_bp.route('/database/recordings', methods=['POST', 'OPTIONS'])
+@database_bp.route('/recordings', methods=['POST', 'OPTIONS'])  # Removed /database
 def save_recording():
     try:
         if request.files and 'file' in request.files:
@@ -165,7 +164,7 @@ def save_recording():
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/recordings/patient/<patient_id>', methods=['GET', 'OPTIONS'])
+@database_bp.route('/recordings/patient/<patient_id>', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_recordings(patient_id):
     try:
         recordings = db.get_recordings_by_patient(patient_id)
@@ -183,7 +182,7 @@ def get_recordings(patient_id):
 # DEVICES
 # =======================
 
-@database_bp.route('/database/devices/register', methods=['POST','OPTIONS'])
+@database_bp.route('/devices/register', methods=['POST', 'OPTIONS'])  # Removed /database
 def register_device():
     try:
         data = request.json
@@ -203,7 +202,7 @@ def register_device():
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/devices/<doctor_id>', methods=['GET', 'OPTIONS'])
+@database_bp.route('/devices/<doctor_id>', methods=['GET', 'OPTIONS'])  # Removed /database
 def get_devices(doctor_id):
     try:
         devices = db.get_doctor_devices(doctor_id)
@@ -217,7 +216,7 @@ def get_devices(doctor_id):
         return jsonify({'error': str(e)}), 500
 
 
-@database_bp.route('/database/devices/<device_id>/status', methods=['PUT', 'OPTIONS'])
+@database_bp.route('/devices/<device_id>/status', methods=['PUT', 'OPTIONS'])  # Removed /database
 def update_device_status(device_id):
     try:
         data = request.json
@@ -241,7 +240,7 @@ def update_device_status(device_id):
 # TRIAGE CALCULATOR
 # =======================
 
-@database_bp.route('/database/triage/calculate', methods=['POST', 'OPTIONS'])
+@database_bp.route('/triage/calculate', methods=['POST', 'OPTIONS'])  # Removed /database
 def calculate_triage():
     try:
         data = request.json
