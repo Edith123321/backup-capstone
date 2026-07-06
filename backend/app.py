@@ -3,153 +3,55 @@ from flask_cors import CORS
 from flask_session import Session
 from dotenv import load_dotenv
 import os
-import sys
 
-# =========================
-# LOAD ENV
-# =========================
 load_dotenv()
 
-# =========================
-# PATH SETUP
-# =========================
-backend_dir = os.path.dirname(os.path.abspath(__file__))
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
-
-# =========================
-# IMPORT BLUEPRINTS
-# =========================
-from api.v1.screening.heart_sound import heart_sound_bp
-from api.v1.screening.database_routes import database_bp
-from api.v1.screening.validation import validation_bp
-from api.v1.auth.google_auth import auth_bp
-from api.v1.auth.test_auth import test_auth_bp
-
-# =========================
-# INIT APP
-# =========================
 app = Flask(__name__)
 
 # =========================
 # CONFIG
 # =========================
-app.config['SECRET_KEY'] = os.environ.get(
-    'SECRET_KEY',
-    'dev-secret-key-change-in-production'
-)
-
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
+app.config["SESSION_TYPE"] = "filesystem"
 
 Session(app)
 
 # =========================
-# CORS (CRITICAL FIX)
+# CORS (IMPORTANT FIX)
 # =========================
-allowed_origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://localhost:5001",
-    "https://saka-frontend.onrender.com",
-    "https://backup-capstone-mbq6.onrender.com",
-    "https://capstone-frontend.onrender.com",
-]
-
 CORS(
     app,
-    resources={r"/api/*": {
-        "origins": allowed_origins,
+    resources={r"/*": {
+        "origins": [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "https://backup-capstone-mbq6.onrender.com"
+        ],
         "supports_credentials": True,
-        "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
-        "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     }}
 )
 
-print("=" * 60)
-print("CORS ENABLED FOR:")
-for origin in allowed_origins:
-    print(" -", origin)
-print("=" * 60)
+# =========================
+# IMPORT BLUEPRINTS (CRITICAL)
+# =========================
+from api.v1.auth.google_auth import auth_bp
+from api.v1.screening.database_routes import database_bp
 
 # =========================
-# BLUEPRINT REGISTRATION (IMPORTANT FIX)
+# REGISTER BLUEPRINTS (CRITICAL FIX)
 # =========================
-app.register_blueprint(heart_sound_bp, url_prefix="/api/v1")
-app.register_blueprint(database_bp, url_prefix="/api/v1")
-app.register_blueprint(validation_bp, url_prefix="/api/v1")
-app.register_blueprint(auth_bp, url_prefix="/api/v1")
-app.register_blueprint(test_auth_bp, url_prefix="/api/v1")
-
-print("✅ All blueprints registered successfully")
+app.register_blueprint(auth_bp)
+app.register_blueprint(database_bp)
 
 # =========================
-# ROOT ROUTE
+# TEST ROUTE
 # =========================
-@app.route('/', methods=['GET'])
-def index():
-    return jsonify({
-        "name": "SAKA Backend API",
-        "status": "running",
-        "endpoints": {
-            "auth_login": "/api/v1/auth/google/login",
-            "auth_callback": "/api/v1/auth/google/callback",
-            "patients": "/api/v1/database/patients",
-            "triage": "/api/v1/database/triage",
-        }
-    })
+@app.route("/")
+def home():
+    return jsonify({"status": "backend running"})
 
-# =========================
-# HEALTH CHECK
-# =========================
-@app.route('/health')
+@app.route("/health")
 def health():
-    return jsonify({
-        "status": "healthy",
-        "env": os.environ.get("FLASK_ENV", "development")
-    })
-
-# =========================
-# GLOBAL OPTIONS FIX (CRITICAL FOR CORS PREFLIGHT)
-# =========================
-@app.before_request
-def handle_options():
-    from flask import request
-    if request.method == "OPTIONS":
-        return jsonify({"status": "ok"}), 200
-
-# =========================
-# ERROR HANDLERS
-# =========================
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Endpoint not found"}), 404
-
-
-@app.errorhandler(500)
-def server_error(e):
-    return jsonify({"error": "Internal server error"}), 500
-
-# =========================
-# MAIN
-# =========================
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001))
-
-    print("\n" + "=" * 60)
-    print("SAKA BACKEND RUNNING")
-    print("=" * 60)
-    print(f"Port: {port}")
-    print(f"Auth login: http://localhost:{port}/api/v1/auth/google/login")
-    print(f"Health: http://localhost:{port}/health")
-    print("=" * 60)
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+    return jsonify({"status": "ok"})
