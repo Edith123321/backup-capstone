@@ -37,7 +37,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS CONFIGURATION
+# CORS CONFIGURATION - FIXED
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -45,16 +45,50 @@ allowed_origins = [
     "https://backup-capstone-mbq6.onrender.com",
 ]
 
-# ONLY USE THIS - No manual CORS handlers
+# Apply CORS to ALL routes with proper configuration
 CORS(
     app,
-    origins=allowed_origins,
-    supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-    expose_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    max_age=3600
+    resources={
+        r"/*": {  # Changed from origins to resources for all routes
+            "origins": allowed_origins,
+            "supports_credentials": True,
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+            "expose_headers": ["Content-Type", "Authorization"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+            "max_age": 3600
+        }
+    }
 )
+
+# =========================
+# MANUAL CORS HANDLERS (Fallback for all routes)
+# =========================
+@app.after_request
+def after_request(response):
+    """Add CORS headers to every response"""
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '3600')
+    return response
+
+# Handle OPTIONS requests explicitly for ALL paths
+@app.route('/', defaults={'path': ''}, methods=['OPTIONS'])
+@app.route('/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    """Handle preflight requests for all routes"""
+    response = jsonify({})
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '3600')
+    return response, 200
 
 # =========================
 # BLUEPRINT REGISTRATION
@@ -78,7 +112,9 @@ def index():
             "login": "/api/v1/auth/google/login",
             "callback": "/api/v1/auth/google/callback",
             "patients": "/api/v1/database/patients",
-            "triage": "/api/v1/database/triage/doctor/<id>"
+            "triage": "/api/v1/database/triage/doctor/<id>",
+            "validate": "/api/v1/screening/validate",
+            "predict": "/api/v1/screening/predict"
         }
     })
 
@@ -88,6 +124,19 @@ def index():
 @app.route("/health")
 def health():
     return jsonify({"status": "healthy"})
+
+# =========================
+# CORS TEST ENDPOINT
+# =========================
+@app.route("/api/test-cors")
+def test_cors():
+    """Test endpoint to verify CORS is working"""
+    return jsonify({
+        "message": "CORS is working!",
+        "origin": request.headers.get('Origin'),
+        "method": request.method,
+        "headers": dict(request.headers)
+    })
 
 # =========================
 # ERROR HANDLERS
