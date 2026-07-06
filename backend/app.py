@@ -5,26 +5,40 @@ from dotenv import load_dotenv
 import os
 import sys
 
-# Load environment variables
+# =========================
+# LOAD ENV
+# =========================
 load_dotenv()
 
-# Add backend to path
+# =========================
+# PATH SETUP
+# =========================
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-# Import blueprints
+# =========================
+# IMPORT BLUEPRINTS
+# =========================
 from api.v1.screening.heart_sound import heart_sound_bp
 from api.v1.screening.database_routes import database_bp
 from api.v1.screening.validation import validation_bp
 from api.v1.auth.google_auth import auth_bp
 from api.v1.auth.test_auth import test_auth_bp
 
-# Initialize app
+# =========================
+# INIT APP
+# =========================
 app = Flask(__name__)
 
-# Session configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+# =========================
+# CONFIG
+# =========================
+app.config['SECRET_KEY'] = os.environ.get(
+    'SECRET_KEY',
+    'dev-secret-key-change-in-production'
+)
+
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
@@ -32,109 +46,102 @@ app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Initialize session
 Session(app)
 
-# ============ CORS CONFIGURATION ============
-# Get allowed origins from environment or use defaults
-allowed_origins_env = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5001,http://localhost:5173')
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
-
-# Add all possible frontend URLs
-frontend_urls = [
-    'https://saka-frontend.onrender.com',
-    'https://backup-capstone-mbq6.onrender.com', 
-    'https://capstone-frontend.onrender.com',     
+# =========================
+# CORS
+# =========================
+allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5001",
+    "https://saka-frontend.onrender.com",
+    "https://backup-capstone-mbq6.onrender.com",
+    "https://capstone-frontend.onrender.com",
+    "https://capstone-be-yxzd.onrender.com",
 ]
 
-for url in frontend_urls:
-    if url not in allowed_origins:
-        allowed_origins.append(url)
+CORS(
+    app,
+    origins=allowed_origins,
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    expose_headers=["Content-Type", "Authorization"]
+)
 
-# Add backend URL for self-requests
-backend_url = 'https://capstone-be-yxzd.onrender.com'
-if backend_url not in allowed_origins:
-    allowed_origins.append(backend_url)
-
-print("=" * 50)
-print("CORS Allowed Origins:")
+print("=" * 60)
+print("CORS ENABLED FOR:")
 for origin in allowed_origins:
-    print(f"  - {origin}")
-print("=" * 50)
+    print(" -", origin)
+print("=" * 60)
 
-CORS(app, 
-     origins=allowed_origins,
-     supports_credentials=True,
-     allow_headers=['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-     expose_headers=['Content-Type', 'Authorization'])
+# =========================
+# BLUEPRINT REGISTRATION
+# IMPORTANT FIX: NO url_prefix="/api/v1" HERE
+# =========================
+app.register_blueprint(heart_sound_bp)
+app.register_blueprint(database_bp)
+app.register_blueprint(validation_bp)
+app.register_blueprint(auth_bp)
+app.register_blueprint(test_auth_bp)
 
-# ============ BLUEPRINT REGISTRATION ============
-# Adding '/api/v1' prefix here ensures that routes like database_bp 
-# (which has its own '/database' prefix) become '/api/v1/database/...'
-app.register_blueprint(heart_sound_bp, url_prefix='/api/v1')
-app.register_blueprint(database_bp, url_prefix='/api/v1')
-app.register_blueprint(validation_bp, url_prefix='/api/v1')
-app.register_blueprint(auth_bp, url_prefix='/api/v1')
-app.register_blueprint(test_auth_bp, url_prefix='/api/v1')
+print("✅ All blueprints registered successfully")
 
+# =========================
+# ROOT ROUTE
+# =========================
 @app.route('/', methods=['GET'])
 def index():
     return jsonify({
-        'name': 'Heart Sound Classifier API',
-        'version': '1.0.0',
-        'status': 'running',
-        'allowed_origins': allowed_origins,
-        'endpoints': {
-            'health': '/health',
-            'predict': '/api/v1/screening/predict',
-            'validate': '/api/v1/screening/validate',
-            'patients': '/api/v1/database/patients',
-            'triage': '/api/v1/database/triage',
-            'recordings': '/api/v1/database/recordings',
-            'devices': '/api/v1/database/devices',
-            'auth_login': '/api/v1/auth/google/login',
-            'auth_callback': '/api/v1/auth/google/callback',
+        "name": "SAKA Backend API",
+        "status": "running",
+        "endpoints": {
+            "auth_login": "/api/v1/auth/google/login",
+            "auth_callback": "/api/v1/auth/google/callback",
+            "patients": "/api/v1/database/patients",
+            "triage": "/api/v1/database/triage",
         }
     })
 
+# =========================
+# HEALTH CHECK
+# =========================
 @app.route('/health')
 def health():
     return jsonify({
-        'status': 'healthy',
-        'environment': os.environ.get('FLASK_ENV', 'development'),
-        'allowed_origins': allowed_origins
+        "status": "healthy",
+        "env": os.environ.get("FLASK_ENV", "development")
     })
 
-@app.route('/mobile')
-def serve_mobile():
-    mobile_path = os.path.join(os.path.dirname(backend_dir), 'frontend_mobile')
-    if os.path.exists(os.path.join(mobile_path, 'index.html')):
-        return send_from_directory(mobile_path, 'index.html')
-    return jsonify({'error': 'Mobile app not found'}), 404
-
+# =========================
+# ERROR HANDLERS
+# =========================
 @app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
+def not_found(e):
+    return jsonify({"error": "Endpoint not found"}), 404
+
 
 @app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+def server_error(e):
+    return jsonify({"error": "Internal server error"}), 500
 
+# =========================
+# MAIN
+# =========================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    
-    print("=" * 50)
-    print(" HEART SOUND CLASSIFIER API")
-    print("=" * 50)
-    print(f"\n Backend path: {backend_dir}")
-    print(f" Authentication: Google OAuth")
-    print(f" Session: Filesystem")
-    print(f" Database: SQLite (doctors.db)")
-    print(f"\n Allowed Origins: {allowed_origins}")
-    print("\n Starting server at http://localhost:" + str(port))
-    print(" Health check: http://localhost:" + str(port) + "/health")
-    print(" Auth login: http://localhost:" + str(port) + "/api/v1/auth/google/login")
-    print("=" * 50)
-    
-    app.run(debug=False, host='0.0.0.0', port=port)
+
+    print("\n" + "=" * 60)
+    print("SAKA BACKEND RUNNING")
+    print("=" * 60)
+    print(f"Port: {port}")
+    print(f"Auth login: http://localhost:{port}/api/v1/auth/google/login")
+    print(f"Health: http://localhost:{port}/health")
+    print("=" * 60)
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
