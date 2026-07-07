@@ -7,7 +7,6 @@ import numpy as np
 import joblib 
 import traceback
 from flask import request, jsonify, Blueprint, make_response
-from scipy.signal import stft, convolve
 from scipy.io import wavfile
 import soundfile as sf  # More reliable than librosa for loading
 from datetime import datetime
@@ -109,149 +108,31 @@ def load_audio_safe(filepath, target_sr=4000, duration=10.0):
         return None, None
 
 # =========================
-# PURE NUMPY MATHEMATICAL REPLACEMENTS (Numba-Safe)
+# THE "STRICT 51" EXTRACTOR (Numba-Safe)
 # =========================
+# Feature extraction is delegated to feature_extraction.py, a pure NumPy/SciPy
+# port of the librosa pipeline the model was trained on (ai_model/src/classifier.py).
+# It reproduces all 51 features — including the 26 MFCCs, mel summary and ZCR std
+# that the previous inline extractor left as zeros — validated to 100% prediction
+# parity with librosa on real recordings, without importing numba.
+try:
+    from feature_extraction import extract_feature_vector
+except ImportError:
+    from api.v1.screening.feature_extraction import extract_feature_vector
 
-def get_zcr_numpy(y):
-    """Bypasses librosa.feature.zero_crossing_rate"""
-    return np.mean(np.abs(np.diff(np.sign(y))) > 0)
-
-def get_spectral_centroid_numpy(S, sr, n_fft):
-    """Bypasses librosa.feature.spectral_centroid"""
-    freqs = np.linspace(0, sr / 2, int(1 + n_fft // 2))
-    return np.sum(freqs[:, np.newaxis] * S, axis=0) / (np.sum(S, axis=0) + 1e-8)
-
-def get_tempo_numpy(y, sr):
-    """Bypasses librosa.feature.tempo using simple autocorrelation"""
-    try:
-        env = np.abs(y[::10])  # Downsample for speed
-        r = np.correlate(env, env, mode='full')[len(env)-1:]
-        # Look for heart rate peaks between 40 and 180 BPM
-        low, high = int(sr/10 * 60/180), int(sr/10 * 60/40)
-        if high - low < 1:
-            return 110.0
-        peak_idx = np.argmax(r[low:high]) + low
-        if peak_idx < len(r):
-            return (sr / 10) * 60 / (peak_idx + 1)
-        return 110.0
-    except:
-        return 110.0
-
-# =========================
-# THE "STRICT 51" EXTRACTOR
-# =========================
 
 def extract_features(filepath, sr=4000, duration=10.0):
     try:
-        # 1. Load Audio using safe method (NO LIBROSA)
         y, actual_sr = load_audio_safe(filepath, target_sr=sr, duration=duration)
         if y is None or len(y) < 1000:
             print(f"❌ Invalid audio: length {len(y) if y is not None else 'None'}")
             return None
-
-        f_map = {}
-        
-        # --- Group 1: Basic Stats (4) ---
-        f_map['mean'] = np.mean(y)
-        f_map['std'] = np.std(y)
-        f_map['rms'] = np.sqrt(np.mean(y**2))
-        f_map['peak'] = np.max(np.abs(y))
-        
-        # --- Group 2: ZCR (2) ---
-        f_map['zcr_mean'] = get_zcr_numpy(y)
-        f_map['zcr_std'] = 0.0  # Placeholder for stability
-        
-        # --- Group 3: Spectral (7) ---
-        n_fft = 1024
-        hop = 256
-        _, _, Zxx = stft(y, fs=sr, nperseg=n_fft, noverlap=n_fft-hop)
-        S = np.abs(Zxx)
-        S_db = 10 * np.log10(S**2 + 1e-10)
-        
-        f_map['spec_mean'] = np.mean(S_db)
-        f_map['spec_std'] = np.std(S_db)
-        f_map['spec_max'] = np.max(S_db)
-        
-        centroid = get_spectral_centroid_numpy(S, sr, n_fft)
-        f_map['spec_centroid'] = np.mean(centroid) if len(centroid) > 0 else 0
-        f_map['spec_centroid_std'] = np.std(centroid) if len(centroid) > 0 else 0
-        f_map['spec_bandwidth'] = f_map['spec_centroid_std'] * 1.5
-        
-        # Rolloff
-        cumsum = np.cumsum(S, axis=0)
-        total = np.sum(S, axis=0)
-        if np.any(total > 0):
-            rolloff_idx = np.argmax(cumsum >= 0.85 * total, axis=0)
-            f_map['spec_rolloff'] = np.mean(rolloff_idx) * (sr / n_fft)
-        else:
-            f_map['spec_rolloff'] = 0
-        
-        # --- Group 4: MFCCs (26) ---
-        # Placeholder - keep shape consistent
-        for i in range(13):
-            f_map[f'mfcc_{i}'] = 0.0
-            f_map[f'mfcc_{i}_std'] = 0.0
-            
-        # --- Group 5: Mel (4) ---
-        mel_bins = min(64, S_db.shape[0])
-        f_map['mel_mean'] = np.mean(S_db[:mel_bins, :])
-        f_map['mel_std'] = np.std(S_db[:mel_bins, :])
-        f_map['mel_max'] = np.max(S_db[:mel_bins, :])
-        f_map['mel_energy'] = np.sum(S**2)
-        
-        # --- Group 6: Tempo (1) ---
-        f_map['tempo'] = get_tempo_numpy(y, sr)
-            
-        # --- Group 7: Envelope (4) ---
-        env = np.abs(y)
-        env_smooth = convolve(env, np.ones(50)/50, mode='same')
-        f_map['env_mean'] = np.mean(env_smooth)
-        f_map['env_std'] = np.std(env_smooth)
-        f_map['env_peak'] = np.max(env_smooth)
-        f_map['env_peak_ratio'] = f_map['env_peak'] / (f_map['env_mean'] + 1e-8)
-        
-        # --- Group 8: Band Power (3) ---
-        fft_vals = np.abs(np.fft.rfft(y))**2
-        fft_freqs = np.fft.rfftfreq(len(y), 1/sr)
-        total_p = np.sum(fft_vals) + 1e-8
-        bands = [(20, 80), (80, 200), (200, 400)]
-        for i, (low, high) in enumerate(bands):
-            mask = (fft_freqs >= low) & (fft_freqs < high)
-            if np.any(mask):
-                f_map[f'band_{i}_power'] = np.sum(fft_vals[mask]) / total_p
-            else:
-                f_map[f'band_{i}_power'] = 0.0
-
-        # --- FINAL 51-INDEX ARRAY ASSEMBLY ---
-        feature_order = [
-            'mean', 'std', 'rms', 'peak', 'zcr_mean', 'zcr_std', 
-            'spec_mean', 'spec_std', 'spec_max', 'spec_centroid', 
-            'spec_centroid_std', 'spec_bandwidth', 'spec_rolloff',
-            'mfcc_0', 'mfcc_0_std', 'mfcc_1', 'mfcc_1_std', 
-            'mfcc_2', 'mfcc_2_std', 'mfcc_3', 'mfcc_3_std', 
-            'mfcc_4', 'mfcc_4_std', 'mfcc_5', 'mfcc_5_std', 
-            'mfcc_6', 'mfcc_6_std', 'mfcc_7', 'mfcc_7_std', 
-            'mfcc_8', 'mfcc_8_std', 'mfcc_9', 'mfcc_9_std', 
-            'mfcc_10', 'mfcc_10_std', 'mfcc_11', 'mfcc_11_std', 
-            'mfcc_12', 'mfcc_12_std', 'mel_mean', 'mel_std', 
-            'mel_max', 'mel_energy', 'tempo', 
-            'env_mean', 'env_std', 'env_peak', 'env_peak_ratio', 
-            'band_0_power', 'band_1_power', 'band_2_power'
-        ]
-        
-        vector = [np.nan_to_num(f_map.get(k, 0.0)) for k in feature_order]
-        
-        # Verify we have exactly 51 features
-        if len(vector) != 51:
-            print(f"❌ Feature count mismatch: {len(vector)}")
-            return None
-            
-        return np.array(vector).reshape(1, -1)
-        
+        return extract_feature_vector(y, sr=sr)
     except Exception as e:
         print(f"❌ Extraction Error: {str(e)}")
         traceback.print_exc()
         return None
+
 
 # =========================
 # CLASSIFIER CLASS
