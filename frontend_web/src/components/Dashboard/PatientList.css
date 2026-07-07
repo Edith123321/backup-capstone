@@ -3,8 +3,8 @@
    ======================================== */
 .patients-container {
   padding: 32px;
-  max-width: 1200px;
-  margin-left: 260px;
+  max-width: 1700px;
+  margin-left: 0px;
   transition: margin-left 0.3s ease;
 }
 
