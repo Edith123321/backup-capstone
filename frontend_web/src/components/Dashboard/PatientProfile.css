@@ -560,7 +560,142 @@
 /* ===========================
    Tab Header
 =========================== */
+/* Add to PatientProfile.css */
 
+/* Analysis Tab */
+.analysis-tab {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.upload-section {
+  text-align: center;
+  padding: 32px;
+  border: 2px dashed #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.upload-section h3 {
+  margin: 0 0 8px 0;
+  color: #1a1a2e;
+}
+
+.upload-section p {
+  color: #64748b;
+  margin-bottom: 20px;
+}
+
+.file-upload-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.upload-btn:hover {
+  background: #2563eb;
+}
+
+.upload-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.analysis-results {
+  margin-top: 16px;
+}
+
+.analysis-results h3 {
+  margin: 0 0 16px 0;
+  color: #1a1a2e;
+}
+
+.result-card {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.result-header:last-of-type {
+  border-bottom: none;
+}
+
+.result-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.result-value {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.rhd-positive {
+  color: #dc2626;
+}
+
+.rhd-negative {
+  color: #22c55e;
+}
+
+.result-suggestion {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  color: #1a1a2e;
+}
+
+.result-suggestion strong {
+  color: #3b82f6;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .upload-section {
+    padding: 20px;
+  }
+
+  .upload-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .result-header {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
 .tab-header {
   display: flex;
   justify-content: space-between;
