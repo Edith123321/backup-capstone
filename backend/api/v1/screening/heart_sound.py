@@ -339,17 +339,33 @@ def predict():
             }), 400
         
         print(f"🎵 Processing: {file.filename}")
+        print(f"📁 File size: {file.content_length or 'unknown'} bytes")
+        print(f"📁 File type: {file.content_type}")
         
+        # Save to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
             file.save(tmp_file.name)
             filepath = tmp_file.name
         
         try:
+            # Check file exists and has content
+            if not os.path.exists(filepath):
+                return jsonify({'error': 'Failed to save uploaded file'}), 500
+            
+            file_size = os.path.getsize(filepath)
+            print(f"📁 Temp file size: {file_size} bytes")
+            
+            if file_size == 0:
+                return jsonify({'error': 'Uploaded file is empty'}), 400
+            
+            # Run prediction
+            print("🧠 Running prediction...")
             result = classifier.predict(filepath, return_all=True)
             
             if result is None:
                 return jsonify({
-                    'error': 'Failed to process audio file'
+                    'error': 'Failed to process audio file',
+                    'message': 'Feature extraction or prediction failed'
                 }), 500
             
             response = {
@@ -366,6 +382,15 @@ def predict():
             print(f"✅ Returning prediction: {response['prediction']}")
             return jsonify(response)
             
+        except Exception as e:
+            print(f"❌ Prediction error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'error': 'Prediction failed',
+                'details': str(e),
+                'type': type(e).__name__
+            }), 500
         finally:
             if os.path.exists(filepath):
                 os.unlink(filepath)
