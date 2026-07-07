@@ -105,8 +105,6 @@ class DoctorDatabase:
                 notes TEXT,
                 recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 analyzed_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (patient_id) REFERENCES patients (id),
                 FOREIGN KEY (doctor_id) REFERENCES doctors (id)
             )
@@ -188,12 +186,12 @@ class DoctorDatabase:
             pass
         
         try:
-            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
         except sqlite3.OperationalError:
             pass
         
         try:
-            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN analyzed_at TIMESTAMP")
         except sqlite3.OperationalError:
             pass
         
@@ -803,8 +801,8 @@ class DoctorDatabase:
                 INSERT INTO heart_sound_recordings (
                     id, patient_id, doctor_id, file_name, file_path, file_url,
                     prediction, confidence, recording_date, notes,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ''', (
                 recording_id,
                 data.get('patient_id'),
@@ -834,22 +832,37 @@ class DoctorDatabase:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            cursor.execute('''
+            # Check if columns exist first
+            cursor.execute("PRAGMA table_info(heart_sound_recordings)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # Build query based on existing columns
+            query = """
                 SELECT 
-                    id, patient_id, doctor_id, file_name, file_path, file_url,
-                    prediction, confidence, recording_date, notes,
-                    created_at, updated_at
+                    id, 
+                    patient_id, 
+                    doctor_id, 
+                    file_name, 
+                    file_path, 
+                    file_url,
+                    prediction, 
+                    confidence, 
+                    recording_date, 
+                    notes,
+                    recorded_at,
+                    analyzed_at
                 FROM heart_sound_recordings
                 WHERE patient_id = ?
-                ORDER BY created_at DESC
-            ''', (patient_id,))
+                ORDER BY recorded_at DESC, recording_date DESC
+            """
             
+            cursor.execute(query, (patient_id,))
             rows = cursor.fetchall()
             conn.close()
             
             recordings = []
             for row in rows:
-                recordings.append({
+                recording = {
                     'id': row[0],
                     'patient_id': row[1],
                     'doctor_id': row[2],
@@ -860,9 +873,16 @@ class DoctorDatabase:
                     'confidence': row[7],
                     'recording_date': row[8],
                     'notes': row[9],
-                    'created_at': row[10],
-                    'updated_at': row[11]
-                })
+                    'created_at': row[10] if len(row) > 10 else None,
+                    'updated_at': row[11] if len(row) > 11 else None
+                }
+                
+                # Clean up None values for JSON
+                for key, value in recording.items():
+                    if value is None:
+                        recording[key] = None
+                
+                recordings.append(recording)
             
             return recordings
             
