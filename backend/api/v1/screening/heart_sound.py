@@ -4,9 +4,10 @@ import tempfile
 import warnings
 import numpy as np
 import joblib 
+import traceback
 from flask import request, jsonify, Blueprint
 
-# FORCE NUMBA OFF to fix the 'get_call_template' error on Render
+# Force Numba JIT off for stability on cloud environments
 os.environ['NUMBA_DISABLE_JIT'] = '1'
 warnings.filterwarnings('ignore')
 
@@ -31,30 +32,32 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # =========================
-# FEATURE EXTRACTION (STABILIZED)
+# FEATURE EXTRACTION (WITH LOGGING)
 # =========================
 
 def extract_features(filepath, sr=4000, duration=10.0):
     try:
-        if not LIBROSA_AVAILABLE: return None
-            
+        print(f"--- Extraction Start: {os.path.basename(filepath)} ---")
         signal, _ = librosa.load(filepath, sr=sr, duration=duration)
-        if len(signal) < 1000: return None
+        
+        if len(signal) < 1000:
+            print(f"❌ Error: Audio too short ({len(signal)} samples)")
+            return None
 
         f_map = {}
         
-        # 1. Basic statistics (4)
+        # 1. Basic statistics
         f_map['mean'] = np.mean(signal)
         f_map['std'] = np.std(signal)
         f_map['rms'] = np.sqrt(np.mean(signal**2))
         f_map['peak'] = np.max(np.abs(signal))
         
-        # 2. Zero crossing rate (2)
+        # 2. Zero crossing rate
         zcr = librosa.feature.zero_crossing_rate(signal)[0]
         f_map['zcr_mean'] = np.mean(zcr)
         f_map['zcr_std'] = np.std(zcr)
         
-        # 3. Spectral features (7)
+        # 3. Spectral features
         spec = np.abs(librosa.stft(signal, n_fft=1024, hop_length=256))
         spec_db = librosa.amplitude_to_db(spec, ref=np.max)
         f_map['spec_mean'] = np.mean(spec_db)
@@ -66,20 +69,20 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['spec_centroid'] = np.mean(centroid)
         f_map['spec_centroid_std'] = np.std(centroid)
         
+        # Bandwidth calculation
         bandwidth = np.sqrt(np.sum((freqs[:, None] - centroid[None, :])**2 * spec, axis=0) / (np.sum(spec, axis=0) + 1e-8))
         f_map['spec_bandwidth'] = np.mean(bandwidth)
         
-        cumsum = np.cumsum(spec, axis=0)
-        rolloff = np.argmax(cumsum >= 0.85 * cumsum[-1, :], axis=0)
+        rolloff = np.argmax(np.cumsum(spec, axis=0) >= 0.85 * np.sum(spec, axis=0), axis=0)
         f_map['spec_rolloff'] = np.mean(rolloff) * sr / 1024
         
-        # 4. MFCCs (26: 13 mean + 13 std)
+        # 4. MFCCs
         mfccs = librosa.feature.mfcc(y=signal, sr=sr, n_mfcc=13, n_fft=1024)
         for i in range(13):
             f_map[f'mfcc_{i}'] = np.mean(mfccs[i])
             f_map[f'mfcc_{i}_std'] = np.std(mfccs[i])
             
-        # 5. Mel spectrogram summary (4)
+        # 5. Mel
         mel_spec = librosa.feature.melspectrogram(y=signal, sr=sr, n_mels=64, n_fft=1024)
         mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
         f_map['mel_mean'] = np.mean(mel_spec_db)
@@ -87,15 +90,15 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['mel_max'] = np.max(mel_spec_db)
         f_map['mel_energy'] = np.sum(mel_spec_db)
         
-        # 6. Tempo (1) - REFACTORED TO AVOID NUMBA BUG
+        # 6. Tempo (Stable Version)
         try:
             onset_env = librosa.onset.onset_strength(y=signal, sr=sr)
             tempo = librosa.feature.tempo(onset_envelope=onset_env, sr=sr)[0]
             f_map['tempo'] = float(tempo)
         except:
-            f_map['tempo'] = 1.0 # Default fallback
+            f_map['tempo'] = 80.0
             
-        # 7. Envelope (4)
+        # 7. Envelope
         envelope = np.abs(signal)
         env_smooth = np.convolve(envelope, np.ones(50)/50, mode='same')
         f_map['env_mean'] = np.mean(env_smooth)
@@ -103,7 +106,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['env_peak'] = np.max(env_smooth)
         f_map['env_peak_ratio'] = f_map['env_peak'] / (f_map['env_mean'] + 1e-8)
         
-        # 8. Band Power (3)
+        # 8. Band Power
         fft = np.fft.rfft(signal)
         pow_freqs = np.fft.rfftfreq(len(signal), 1/sr)
         power = np.abs(fft)**2
@@ -112,27 +115,29 @@ def extract_features(filepath, sr=4000, duration=10.0):
             mask = (pow_freqs >= low) & (pow_freqs < high)
             f_map[f'band_{i}_power'] = np.sum(power[mask]) / total_p
 
-        # --- FINAL STEP: EXACT 51 FEATURE ORDERING ---
-        # This list MUST match the columns used in your training notebook
+        # --- MATCHING FEATURE ORDER ---
         feature_order = [
-            'mean', 'std', 'rms', 'peak', 
-            'zcr_mean', 'zcr_std', 
+            'mean', 'std', 'rms', 'peak', 'zcr_mean', 'zcr_std', 
             'spec_mean', 'spec_std', 'spec_max', 'spec_centroid', 'spec_centroid_std', 'spec_bandwidth', 'spec_rolloff',
             'mfcc_0', 'mfcc_0_std', 'mfcc_1', 'mfcc_1_std', 'mfcc_2', 'mfcc_2_std', 'mfcc_3', 'mfcc_3_std', 
             'mfcc_4', 'mfcc_4_std', 'mfcc_5', 'mfcc_5_std', 'mfcc_6', 'mfcc_6_std', 'mfcc_7', 'mfcc_7_std', 
             'mfcc_8', 'mfcc_8_std', 'mfcc_9', 'mfcc_9_std', 'mfcc_10', 'mfcc_10_std', 'mfcc_11', 'mfcc_11_std', 
-            'mfcc_12', 'mfcc_12_std',
-            'mel_mean', 'mel_std', 'mel_max', 'mel_energy',
-            'tempo', 
-            'env_mean', 'env_std', 'env_peak', 'env_peak_ratio',
-            'band_0_power', 'band_1_power', 'band_2_power'
+            'mfcc_12', 'mfcc_12_std', 'mel_mean', 'mel_std', 'mel_max', 'mel_energy', 'tempo', 
+            'env_mean', 'env_std', 'env_peak', 'env_peak_ratio', 'band_0_power', 'band_1_power', 'band_2_power'
         ]
         
-        vector = [f_map.get(k, 0.0) for k in feature_order]
+        vector = []
+        for k in feature_order:
+            val = f_map.get(k, 0.0)
+            if np.isnan(val) or np.isinf(val): val = 0.0 # Clean data for Scaler
+            vector.append(val)
+
+        print(f"✅ Success: Extracted {len(vector)} features.")
         return np.array(vector).reshape(1, -1)
         
     except Exception as e:
-        print(f"❌ Feature Extraction Error: {e}")
+        print(f"❌ Feature Extraction Crash: {str(e)}")
+        traceback.print_exc()
         return None
 
 # =========================
@@ -144,7 +149,7 @@ class HeartSoundClassifier:
         self.model_path = model_path
         self.model = None
         self.scaler = None
-        self.feature_count = 51 # Explicitly set to 51
+        self.feature_count = 51
         self.load_model()
     
     def load_model(self):
@@ -154,7 +159,7 @@ class HeartSoundClassifier:
             if os.path.exists(m_file) and os.path.exists(s_file):
                 self.model = joblib.load(m_file)
                 self.scaler = joblib.load(s_file)
-                print(f"✅ Scaler & Model Loaded. Expecting 51 features.")
+                print(f"✅ Model & Scaler Loaded. Input: {self.scaler.n_features_in_}")
                 return True
             return False
         except Exception as e:
@@ -162,25 +167,34 @@ class HeartSoundClassifier:
             return False
 
     def predict(self, filepath):
-        if self.model is None or self.scaler is None: return None
+        if not self.model or not self.scaler:
+            print("❌ Error: Model/Scaler objects missing.")
+            return None
+            
         features = extract_features(filepath)
-        if features is None: return None
-
-        # Check for count mismatch
-        if features.shape[1] != self.feature_count:
-            print(f"⚠️ Mismatch: Got {features.shape[1]}, Expected {self.feature_count}")
+        if features is None:
             return None
 
-        features_scaled = self.scaler.transform(features)
-        pred = self.model.predict(features_scaled)[0]
-        prob = self.model.predict_proba(features_scaled)[0]
-        
-        return {
-            'class': 'RHD' if pred == 1 else 'Normal',
-            'confidence': float(np.max(prob)),
-            'prob_normal': float(prob[0]),
-            'prob_rhd': float(prob[1])
-        }
+        if features.shape[1] != self.feature_count:
+            print(f"❌ Shape Mismatch: Got {features.shape[1]}, Expected {self.feature_count}")
+            return None
+
+        try:
+            features_scaled = self.scaler.transform(features)
+            pred = self.model.predict(features_scaled)[0]
+            prob = self.model.predict_proba(features_scaled)[0]
+            
+            print(f"🎯 Final Prediction: {pred} with confidence {np.max(prob)}")
+            
+            return {
+                'class': 'RHD' if pred == 1 else 'Normal',
+                'confidence': float(np.max(prob)),
+                'prob_normal': float(prob[0]),
+                'prob_rhd': float(prob[1])
+            }
+        except Exception as e:
+            print(f"❌ Prediction Phase Crash: {e}")
+            return None
 
 classifier = HeartSoundClassifier(MODEL_PATH)
 
@@ -206,14 +220,18 @@ def predict():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
-    fd, path = tempfile.mkstemp(suffix='.wav')
+    print(f"🎵 Received Predict Request for: {file.filename}")
+
+    # Use a safer temp file approach for Render's limited disk
+    suffix = os.path.splitext(file.filename)[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
     try:
-        with os.fdopen(fd, 'wb') as tmp:
-            file.save(tmp)
-        
-        result = classifier.predict(path)
+        result = classifier.predict(tmp_path)
         if result is None:
-            return jsonify({'error': 'Prediction failed', 'message': 'Feature extraction or model mismatch'}), 500
+            return jsonify({'error': 'Prediction failed', 'message': 'Internal extraction or logic error. See server logs.'}), 500
             
         return jsonify({
             'success': True,
@@ -225,7 +243,8 @@ def predict():
             }
         })
     except Exception as e:
+        print(f"❌ Global Predict Error: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
