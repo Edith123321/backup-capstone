@@ -649,30 +649,33 @@ export const patientService = {
         throw new Error('No authentication token found');
       }
 
-      const [patientRes, triageRes, recordingsRes] = await Promise.all([
-        databaseApi.getPatient(patientId),
-        databaseApi.getTriageByPatient(patientId),
-        databaseApi.getRecordings(patientId),
-      ]);
-
+      // Fetch the patient first — it is the critical resource. Triage and
+      // recordings are fetched independently (allSettled) so that a transient
+      // failure in either does NOT wipe the patient from the profile view.
+      const patientRes = await databaseApi.getPatient(patientId);
       if (!patientRes.success || !patientRes.patient) {
         throw new Error('Patient not found');
       }
+
+      const [triageSettled, recordingsSettled] = await Promise.allSettled([
+        databaseApi.getTriageByPatient(patientId),
+        databaseApi.getRecordings(patientId),
+      ]);
+      const triage = (triageSettled.status === 'fulfilled' && triageSettled.value?.success)
+        ? triageSettled.value.triage : [];
+      const recordings = (recordingsSettled.status === 'fulfilled' && recordingsSettled.value?.success)
+        ? recordingsSettled.value.recordings : [];
 
       // Cache patient details
       const cacheKey = `patient_details_${patientId}`;
       localStorage.setItem(cacheKey, JSON.stringify({
         patient: patientRes.patient,
-        triage: triageRes.success ? triageRes.triage : [],
-        recordings: recordingsRes.success ? recordingsRes.recordings : [],
+        triage,
+        recordings,
         cached_at: new Date().toISOString()
       }));
 
-      return {
-        patient: patientRes.patient,
-        triage: triageRes.success ? triageRes.triage : [],
-        recordings: recordingsRes.success ? recordingsRes.recordings : [],
-      };
+      return { patient: patientRes.patient, triage, recordings };
     } catch (error) {
       console.error('Error fetching patient details:', error);
       

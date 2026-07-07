@@ -205,6 +205,12 @@ const IoTDevices = () => {
   const waveformBuffer = useRef([]);
   const maxBufferSize = 1024;
 
+  // Web Bluetooth (must match iot/src/Config.h — BLE_SERVICE_UUID / BLE_CHAR_UUID)
+  const BLE_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const BLE_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const bleDevice = useRef(null);
+  const bleCharacteristic = useRef(null);
+
   // Fetch devices
   const fetchDevices = useCallback(async () => {
     if (!user?.id) return;
@@ -297,11 +303,99 @@ const IoTDevices = () => {
     }
   };
 
+  // Connect to the Saka stethoscope directly over Bluetooth (Web Bluetooth API).
+  // Requires HTTPS + a Chromium browser and a user gesture. Uses the same audio
+  // pipeline / waveform as the WebSocket path.
+  const connectViaBluetooth = async () => {
+    if (!navigator.bluetooth) {
+      alert('Web Bluetooth is not supported in this browser. Use Chrome or Edge over HTTPS.');
+      return;
+    }
+    try {
+      setRecordingStatus('connecting');
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [BLE_SERVICE_UUID] }],
+        optionalServices: [BLE_SERVICE_UUID],
+      });
+
+      bleDevice.current = device;
+      device.addEventListener('gattserverdisconnected', handleBluetoothDisconnected);
+
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+      const characteristic = await service.getCharacteristic(BLE_CHAR_UUID);
+      bleCharacteristic.current = characteristic;
+
+      // Stream audio via notifications, reusing the existing waveform handler.
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', handleBluetoothNotification);
+
+      // Ask the firmware to start streaming (matches BLE_Handler onWrite "START").
+      try {
+        await characteristic.writeValue(new TextEncoder().encode('START'));
+      } catch (e) {
+        console.warn('Could not send START command:', e);
+      }
+
+      setSelectedDevice({
+        id: device.id || 'ble-device',
+        device_name: device.name || 'Saka Stethoscope (BLE)',
+        connection: 'bluetooth',
+      });
+      setShowWaveform(true);
+      setWaveformData([]);
+      waveformBuffer.current = [];
+      setRecordingStatus('connected');
+      setSignalQuality(100);
+    } catch (error) {
+      // A user cancelling the chooser throws NotFoundError — treat as a no-op.
+      if (error?.name === 'NotFoundError') {
+        setRecordingStatus('idle');
+        return;
+      }
+      console.error('Bluetooth connection failed:', error);
+      setRecordingStatus('error');
+      alert('Bluetooth connection failed: ' + (error?.message || error));
+    }
+  };
+
+  // Decode raw int16 PCM notifications into normalised samples for the waveform.
+  const handleBluetoothNotification = (event) => {
+    const view = event.target.value; // DataView
+    const samples = [];
+    for (let i = 0; i + 1 < view.byteLength; i += 2) {
+      samples.push(view.getInt16(i, true) / 32768);
+    }
+    if (samples.length) {
+      handleAudioData({ type: 'waveform', data: samples });
+    }
+  };
+
+  const handleBluetoothDisconnected = () => {
+    setRecordingStatus('disconnected');
+    setShowWaveform(false);
+    setSignalQuality(0);
+  };
+
   // Disconnect from device
-  const disconnectDevice = () => {
+  const disconnectDevice = async () => {
     if (wsConnection.current) {
       wsConnection.current.close();
       wsConnection.current = null;
+    }
+    // Tear down any Bluetooth connection too.
+    if (bleCharacteristic.current) {
+      try {
+        await bleCharacteristic.current.writeValue(new TextEncoder().encode('STOP'));
+        await bleCharacteristic.current.stopNotifications();
+        bleCharacteristic.current.removeEventListener('characteristicvaluechanged', handleBluetoothNotification);
+      } catch (e) { /* ignore */ }
+      bleCharacteristic.current = null;
+    }
+    if (bleDevice.current) {
+      bleDevice.current.removeEventListener('gattserverdisconnected', handleBluetoothDisconnected);
+      if (bleDevice.current.gatt?.connected) bleDevice.current.gatt.disconnect();
+      bleDevice.current = null;
     }
     if (isRecording) {
       stopRecording();
@@ -605,13 +699,21 @@ const IoTDevices = () => {
           <h1>IoT Stethoscope Devices</h1>
           <p className="subtitle">Connect and manage your IoT stethoscope devices</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowRegisterModal(true)}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Register Device
-        </button>
+        <div className="header-actions">
+          <button className="btn-bluetooth" onClick={connectViaBluetooth} title="Connect the stethoscope over Bluetooth">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6.5 6.5 L17.5 17.5 L12 23 V1 L17.5 6.5 L6.5 17.5"/>
+            </svg>
+            Connect via Bluetooth
+          </button>
+          <button className="btn-primary" onClick={() => setShowRegisterModal(true)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Register Device
+          </button>
+        </div>
       </div>
 
       {/* Status Cards */}
