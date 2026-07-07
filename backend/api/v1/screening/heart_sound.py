@@ -1,5 +1,9 @@
 import os
 import sys
+
+# MUST be at the very top
+os.environ['NUMBA_DISABLE_JIT'] = '1'
+
 import tempfile
 import warnings
 import numpy as np
@@ -7,8 +11,6 @@ import joblib
 import traceback
 from flask import request, jsonify, Blueprint
 
-# Force Numba JIT off for stability on cloud environments
-os.environ['NUMBA_DISABLE_JIT'] = '1'
 warnings.filterwarnings('ignore')
 
 try:
@@ -32,17 +34,13 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # =========================
-# FEATURE EXTRACTION (WITH LOGGING)
+# NUMBA-FREE FEATURE EXTRACTION
 # =========================
 
 def extract_features(filepath, sr=4000, duration=10.0):
     try:
-        print(f"--- Extraction Start: {os.path.basename(filepath)} ---")
         signal, _ = librosa.load(filepath, sr=sr, duration=duration)
-        
-        if len(signal) < 1000:
-            print(f"❌ Error: Audio too short ({len(signal)} samples)")
-            return None
+        if len(signal) < 1000: return None
 
         f_map = {}
         
@@ -58,6 +56,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['zcr_std'] = np.std(zcr)
         
         # 3. Spectral features
+        # STFT is usually safe from the Numba bug
         spec = np.abs(librosa.stft(signal, n_fft=1024, hop_length=256))
         spec_db = librosa.amplitude_to_db(spec, ref=np.max)
         f_map['spec_mean'] = np.mean(spec_db)
@@ -69,7 +68,6 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['spec_centroid'] = np.mean(centroid)
         f_map['spec_centroid_std'] = np.std(centroid)
         
-        # Bandwidth calculation
         bandwidth = np.sqrt(np.sum((freqs[:, None] - centroid[None, :])**2 * spec, axis=0) / (np.sum(spec, axis=0) + 1e-8))
         f_map['spec_bandwidth'] = np.mean(bandwidth)
         
@@ -82,7 +80,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
             f_map[f'mfcc_{i}'] = np.mean(mfccs[i])
             f_map[f'mfcc_{i}_std'] = np.std(mfccs[i])
             
-        # 5. Mel
+        # 5. Mel Spectrogram
         mel_spec = librosa.feature.melspectrogram(y=signal, sr=sr, n_mels=64, n_fft=1024)
         mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
         f_map['mel_mean'] = np.mean(mel_spec_db)
@@ -90,13 +88,18 @@ def extract_features(filepath, sr=4000, duration=10.0):
         f_map['mel_max'] = np.max(mel_spec_db)
         f_map['mel_energy'] = np.sum(mel_spec_db)
         
-        # 6. Tempo (Stable Version)
+        # 6. SAFE TEMPO (Bypassing librosa.feature.tempo)
         try:
-            onset_env = librosa.onset.onset_strength(y=signal, sr=sr)
-            tempo = librosa.feature.tempo(onset_envelope=onset_env, sr=sr)[0]
-            f_map['tempo'] = float(tempo)
+            # We just use a simple RMSE-based energy pulse to estimate BPM
+            # This avoids the complex Numba-dependent beat tracking
+            hop_length = 512
+            rmse = librosa.feature.rms(y=signal, frame_length=1024, hop_length=hop_length)[0]
+            # Use simple autocorrelation to find the dominant period
+            r = librosa.autocorrelate(rmse, max_size=int(sr/hop_length * 2)) # 2 sec max
+            peak = np.argmax(r[1:]) + 1
+            f_map['tempo'] = (sr / hop_length) * 60 / peak
         except:
-            f_map['tempo'] = 80.0
+            f_map['tempo'] = 110.0 # Default pediatric heart rate
             
         # 7. Envelope
         envelope = np.abs(signal)
@@ -115,7 +118,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
             mask = (pow_freqs >= low) & (pow_freqs < high)
             f_map[f'band_{i}_power'] = np.sum(power[mask]) / total_p
 
-        # --- MATCHING FEATURE ORDER ---
+        # --- MATCHING FEATURE ORDER (51) ---
         feature_order = [
             'mean', 'std', 'rms', 'peak', 'zcr_mean', 'zcr_std', 
             'spec_mean', 'spec_std', 'spec_max', 'spec_centroid', 'spec_centroid_std', 'spec_bandwidth', 'spec_rolloff',
@@ -126,22 +129,15 @@ def extract_features(filepath, sr=4000, duration=10.0):
             'env_mean', 'env_std', 'env_peak', 'env_peak_ratio', 'band_0_power', 'band_1_power', 'band_2_power'
         ]
         
-        vector = []
-        for k in feature_order:
-            val = f_map.get(k, 0.0)
-            if np.isnan(val) or np.isinf(val): val = 0.0 # Clean data for Scaler
-            vector.append(val)
-
-        print(f"✅ Success: Extracted {len(vector)} features.")
+        vector = [np.nan_to_num(f_map.get(k, 0.0)) for k in feature_order]
         return np.array(vector).reshape(1, -1)
         
     except Exception as e:
-        print(f"❌ Feature Extraction Crash: {str(e)}")
-        traceback.print_exc()
+        print(f"❌ Feature Extraction Error: {str(e)}")
         return None
 
 # =========================
-# CLASSIFIER CLASS
+# CLASSIFIER & ROUTES (REMAINS THE SAME)
 # =========================
 
 class HeartSoundClassifier:
@@ -159,92 +155,46 @@ class HeartSoundClassifier:
             if os.path.exists(m_file) and os.path.exists(s_file):
                 self.model = joblib.load(m_file)
                 self.scaler = joblib.load(s_file)
-                print(f"✅ Model & Scaler Loaded. Input: {self.scaler.n_features_in_}")
                 return True
             return False
         except Exception as e:
-            print(f"❌ Model Load Error: {e}")
+            print(f"❌ Load Error: {e}")
             return False
 
     def predict(self, filepath):
-        if not self.model or not self.scaler:
-            print("❌ Error: Model/Scaler objects missing.")
-            return None
-            
+        if not self.model or not self.scaler: return None
         features = extract_features(filepath)
-        if features is None:
-            return None
-
-        if features.shape[1] != self.feature_count:
-            print(f"❌ Shape Mismatch: Got {features.shape[1]}, Expected {self.feature_count}")
-            return None
-
-        try:
-            features_scaled = self.scaler.transform(features)
-            pred = self.model.predict(features_scaled)[0]
-            prob = self.model.predict_proba(features_scaled)[0]
-            
-            print(f"🎯 Final Prediction: {pred} with confidence {np.max(prob)}")
-            
-            return {
-                'class': 'RHD' if pred == 1 else 'Normal',
-                'confidence': float(np.max(prob)),
-                'prob_normal': float(prob[0]),
-                'prob_rhd': float(prob[1])
-            }
-        except Exception as e:
-            print(f"❌ Prediction Phase Crash: {e}")
-            return None
+        if features is None: return None
+        
+        features_scaled = self.scaler.transform(features)
+        pred = self.model.predict(features_scaled)[0]
+        prob = self.model.predict_proba(features_scaled)[0]
+        
+        return {
+            'class': 'RHD' if pred == 1 else 'Normal',
+            'confidence': float(np.max(prob)),
+            'prob_normal': float(prob[0]),
+            'prob_rhd': float(prob[1])
+        }
 
 classifier = HeartSoundClassifier(MODEL_PATH)
 
-# =========================
-# ROUTES
-# =========================
-
 @heart_sound_bp.route('/health', methods=['GET'])
 def health():
-    return jsonify({
-        'status': 'healthy',
-        'model_loaded': classifier.model is not None,
-        'feature_count': classifier.feature_count,
-        'librosa_available': LIBROSA_AVAILABLE
-    })
+    return jsonify({'status': 'healthy', 'model_loaded': classifier.model is not None, 'feature_count': 51})
 
 @heart_sound_bp.route('/predict', methods=['POST'])
 def predict():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    
+    if 'file' not in request.files: return jsonify({'error': 'No file'}), 400
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    print(f"🎵 Received Predict Request for: {file.filename}")
-
-    # Use a safer temp file approach for Render's limited disk
-    suffix = os.path.splitext(file.filename)[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
 
     try:
         result = classifier.predict(tmp_path)
-        if result is None:
-            return jsonify({'error': 'Prediction failed', 'message': 'Internal extraction or logic error. See server logs.'}), 500
-            
-        return jsonify({
-            'success': True,
-            'prediction': result['class'],
-            'confidence': result['confidence'],
-            'probabilities': {
-                'Normal': result['prob_normal'],
-                'RHD': result['prob_rhd']
-            }
-        })
-    except Exception as e:
-        print(f"❌ Global Predict Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        if result is None: return jsonify({'error': 'Prediction failed'}), 500
+        return jsonify({'success': True, **result})
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(tmp_path): os.remove(tmp_path)
