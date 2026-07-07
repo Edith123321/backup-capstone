@@ -1,12 +1,12 @@
 /* ========================================
    PATIENT LIST - Main Container
    ======================================== */
-.patients-container {
+/* .patients-container {
   padding: 32px;
   max-width: 1700px;
   margin-left: 0px;
   transition: margin-left 0.3s ease;
-}
+} */
 
 /* ========================================
    HEADER
@@ -817,5 +817,233 @@
   .age-group-badge {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+}
+/* Mobile Cards */
+.patients-mobile-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 4px;
+}
+
+.patient-card-mobile {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #e2e8f0;
+}
+
+.patient-card-mobile:active {
+  transform: scale(0.98);
+  background: #f8fafc;
+}
+
+.patient-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.patient-card-name {
+  flex: 1;
+}
+
+.patient-card-name h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1a1a2e;
+}
+
+.patient-card-name .patient-id {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.patient-card-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin: 12px 0;
+  padding: 12px 0;
+  border-top: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-item .detail-label {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-item .detail-value {
+  font-size: 0.9rem;
+  color: #1a1a2e;
+  font-weight: 500;
+}
+
+.address-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.patient-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.btn-view-mobile {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-view-mobile:active {
+  background: #2563eb;
+}
+
+.rhd-status-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rhd-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 8px;
+}
+
+.empty-state-mobile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #94a3b8;
+  background: white;
+  border-radius: 12px;
+}
+
+.empty-state-mobile p {
+  margin: 16px 0;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .patients-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .patients-header .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  .stat-number {
+    font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .search-wrapper {
+    width: 100%;
+  }
+
+  .patient-count {
+    font-size: 0.8rem;
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .pagination-info {
+    font-size: 0.8rem;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .pagination-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .patient-card-details {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .patient-card-header {
+    flex-wrap: wrap;
+  }
+
+  .rhd-status-badge {
+    font-size: 0.65rem;
+    padding: 2px 8px;
   }
 }
