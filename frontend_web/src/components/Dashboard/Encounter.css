@@ -332,6 +332,14 @@
   transform: none;
 }
 
+.btn-record-device {
+  background: var(--info, #2563eb);
+}
+
+.btn-record-device:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
 .btn-record.recording {
   background: #e53e3e;
   animation: pulse 1.5s infinite;

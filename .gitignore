@@ -1,0 +1,7 @@
+
+# test / runtime artifacts
+tests/doctors.db
+tests/**/doctors.db
+backend/reports/
+tests/coverage_report/
+tests/test_report.json
