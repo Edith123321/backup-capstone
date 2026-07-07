@@ -1,5 +1,5 @@
 // frontend_web/src/components/Dashboard/NewEncounter.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { databaseApi } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SearchIcon from '@mui/icons-material/Search';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import MicIcon from '@mui/icons-material/Mic';
+import DevicesIcon from '@mui/icons-material/Devices';
 import StopIcon from '@mui/icons-material/Stop';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -173,12 +174,30 @@ const NewEncounter = () => {
     }
   };
 
+  // Derive age (in whole years) from a date of birth.
+  const computeAge = (dob) => {
+    if (!dob) return '';
+    const birth = new Date(dob);
+    if (isNaN(birth.getTime())) return '';
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const m = now.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age -= 1;
+    return age >= 0 ? age : '';
+  };
+
   const handlePatientChange = (e) => {
     const { name, value } = e.target;
-    setPatient({ ...patient, [name]: value });
-    if (name === 'name' && value) {
-      setPatient(prev => ({ ...prev, isNew: true, existingPatientId: null }));
-    }
+    setPatient(prev => {
+      const next = { ...prev, [name]: value };
+      // Age is derived from date of birth, not entered directly.
+      if (name === 'date_of_birth') next.age = computeAge(value);
+      if (name === 'name' && value) {
+        next.isNew = true;
+        next.existingPatientId = null;
+      }
+      return next;
+    });
   };
 
   const handleTriageChange = (e) => {
@@ -256,6 +275,105 @@ const NewEncounter = () => {
   };
 
   const stopRecording = () => {};
+
+  // ---- Record from the connected IoT stethoscope over Bluetooth ----
+  // UUIDs must match iot/src/Config.h (BLE_SERVICE_UUID / BLE_CHAR_UUID).
+  const BLE_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const BLE_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const DEVICE_SAMPLE_RATE = 4000;
+  const bleSamples = useRef([]);
+
+  // Encode Float32 samples [-1,1] to a 16-bit PCM mono WAV Blob.
+  const encodeWav = (samples, sampleRate) => {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);          // PCM
+    view.setUint16(22, 1, true);          // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    let off = 44;
+    for (let i = 0; i < samples.length; i++, off += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return new Blob([view], { type: 'audio/wav' });
+  };
+
+  const recordFromDevice = async () => {
+    if (!navigator.bluetooth) {
+      setError('Web Bluetooth is not supported here. Use Chrome or Edge over HTTPS, or upload a file.');
+      return;
+    }
+    let device, characteristic;
+    const onValue = (e) => {
+      const dv = e.target.value;
+      for (let i = 0; i + 1 < dv.byteLength; i += 2) {
+        bleSamples.current.push(dv.getInt16(i, true) / 32768);
+      }
+    };
+    try {
+      setRecording(prev => ({ ...prev, isRecording: true }));
+      bleSamples.current = [];
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [BLE_SERVICE_UUID] }],
+        optionalServices: [BLE_SERVICE_UUID],
+      });
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+      characteristic = await service.getCharacteristic(BLE_CHAR_UUID);
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', onValue);
+      try { await characteristic.writeValue(new TextEncoder().encode('START')); } catch { /* optional */ }
+
+      // Capture ~10 seconds of streamed audio.
+      await new Promise(res => setTimeout(res, 10000));
+
+      try { await characteristic.writeValue(new TextEncoder().encode('STOP')); } catch { /* optional */ }
+      characteristic.removeEventListener('characteristicvaluechanged', onValue);
+      await characteristic.stopNotifications();
+      if (device.gatt?.connected) device.gatt.disconnect();
+
+      const samples = bleSamples.current;
+      if (!samples.length) {
+        setError('No audio received from the device. Ensure it is powered on and streaming.');
+        setRecording(prev => ({ ...prev, isRecording: false }));
+        return;
+      }
+      const blob = encodeWav(samples, DEVICE_SAMPLE_RATE);
+      const file = new File([blob], 'device_recording.wav', { type: 'audio/wav' });
+      setRecording(prev => ({
+        ...prev,
+        file,
+        recordingBlob: blob,
+        audioUrl: URL.createObjectURL(blob),
+        isRecording: false,
+        prediction: null,
+        isValidHeartSound: null,
+        qualityScore: null,
+        validationIssues: [],
+        duration: samples.length / DEVICE_SAMPLE_RATE,
+        auscultation_point: selectedAuscultationPoint,
+        auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label,
+      }));
+    } catch (error) {
+      if (error?.name !== 'NotFoundError') {
+        console.error('Device recording failed:', error);
+        setError('Device recording failed: ' + (error?.message || error));
+      }
+      setRecording(prev => ({ ...prev, isRecording: false }));
+      try { if (device?.gatt?.connected) device.gatt.disconnect(); } catch { /* ignore */ }
+    }
+  };
 
   // Complete Encounter
   const completeEncounter = async () => {
@@ -451,15 +569,24 @@ const NewEncounter = () => {
           />
         </div>
         <div className="form-group">
-          <label>Age</label>
+          <label>Date of Birth</label>
           <input
-            type="number"
-            name="age"
-            placeholder="Enter age in years"
-            value={patient.age}
+            type="date"
+            name="date_of_birth"
+            value={patient.date_of_birth}
+            max={new Date().toISOString().split('T')[0]}
             onChange={handlePatientChange}
-            min="0"
-            max="150"
+          />
+        </div>
+        <div className="form-group">
+          <label>Age (auto-calculated)</label>
+          <input
+            type="text"
+            name="age"
+            value={patient.age !== '' && patient.age !== null && patient.age !== undefined ? `${patient.age} years` : ''}
+            placeholder="Set from date of birth"
+            readOnly
+            disabled
           />
         </div>
         <div className="form-group">
@@ -470,15 +597,6 @@ const NewEncounter = () => {
             <option value="Female">Female</option>
             <option value="Other">Other</option>
           </select>
-        </div>
-        <div className="form-group">
-          <label>Date of Birth</label>
-          <input
-            type="date"
-            name="date_of_birth"
-            value={patient.date_of_birth}
-            onChange={handlePatientChange}
-          />
         </div>
         <div className="form-group">
           <label>Contact Number</label>
@@ -700,11 +818,27 @@ const NewEncounter = () => {
             <button
               className={`btn-record ${recording.isRecording ? 'recording' : ''}`}
               onClick={recording.isRecording ? stopRecording : startRecording}
+              disabled={recording.isRecording}
             >
               {recording.isRecording ? <StopIcon /> : <MicIcon />}
-              {recording.isRecording ? 'Stop Recording' : 'Record Heart Sound'}
+              {recording.isRecording ? 'Recording…' : 'Record Heart Sound'}
             </button>
             <span className="record-hint">Record up to 10 seconds</span>
+          </div>
+
+          <div className="divider">or</div>
+
+          <div className="record-section">
+            <button
+              type="button"
+              className="btn-record btn-record-device"
+              onClick={recordFromDevice}
+              disabled={recording.isRecording}
+            >
+              <DevicesIcon />
+              Record from connected device
+            </button>
+            <span className="record-hint">Streams 10s from the Saka stethoscope over Bluetooth</span>
           </div>
         </div>
 

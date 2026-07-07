@@ -779,6 +779,29 @@ export const statsService = {
   }
 };
 
+// =====================
+// REPORT SERVICE
+// =====================
+export const reportService = {
+  // Generate a PDF referral report for a patient.
+  generate: async (payload) => {
+    const res = await api.post('/reports/generate', payload);
+    return res.data;
+  },
+  // Absolute download URL on the backend (the file endpoint returns a PDF).
+  downloadUrl: (filename) => `${api.defaults.baseURL}/reports/download/${filename}`,
+};
+
+// =====================
+// PROGNOSIS SERVICE
+// =====================
+export const prognosisService = {
+  getRisk: async (patientId) => {
+    const res = await api.get(`/prognosis/risk/${patientId}`);
+    return res.data;
+  },
+};
+
 // Export offline status helper
 export const isOffline = () => !navigator.onLine;
 export const isOnline = () => navigator.onLine;

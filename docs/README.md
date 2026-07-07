@@ -8,6 +8,9 @@ Documentation package for the SAKA (HeartSound AI) RHD screening capstone.
 | [technical_specification.md](technical_specification.md) | System architecture + the Numba-safe DSP/feature pipeline |
 | [uml.md](uml.md) | UML suite — Use Case, ERD, Class, and Sequence diagrams (Mermaid) |
 | [clinical_evaluation_report.md](clinical_evaluation_report.md) | Confusion matrix, F1, AUC-ROC from the trained model artifacts |
+| [deployment_plan.md](deployment_plan.md) | Environments, tooling, deploy steps, and verification evidence |
+| [results_analysis.md](results_analysis.md) | Results vs. proposal objectives / research questions, with honest gaps |
+| [testing_strategy.md](testing_strategy.md) | Testing strategies, edge cases, and cross-environment evidence (see `tests/`) |
 
 ## Related artifacts elsewhere in the repo
 - Model metrics & plots: `ai_model/models/mitral_classifier_v4/` (`model_comparison.csv`, `confusion_matrix_*.png`, `roc_curves.png`)

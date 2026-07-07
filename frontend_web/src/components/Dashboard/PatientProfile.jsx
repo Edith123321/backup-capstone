@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { patientService, screeningService, databaseApi } from '../../services/api';
+import { patientService, screeningService, databaseApi, reportService, prognosisService } from '../../services/api';
+import Sidebar from './Sidebar';
 import AnatomicalMap, { AnatomicalMapTrigger } from './AnatomicalMap';
+import './DashboardLayout.css';
 import './PatientProfile.css';
 
 // ============================================
@@ -114,14 +116,11 @@ const PatientProfile = () => {
           console.warn('Could not fetch severity history:', e);
         }
         
-        // Fetch prognostic risk
+        // Fetch prognostic risk (via the backend base URL, not the static host)
         try {
-          const riskRes = await fetch(`/api/v1/prognosis/risk/${id}`);
-          if (riskRes.ok) {
-            const riskData = await riskRes.json();
-            if (riskData.success) {
-              setPrognosticRisk(riskData.prognosis);
-            }
+          const riskData = await prognosisService.getRisk(id);
+          if (riskData.success) {
+            setPrognosticRisk(riskData.prognosis);
           }
         } catch (e) {
           console.warn('Could not fetch prognostic risk:', e);
@@ -238,35 +237,26 @@ const PatientProfile = () => {
   const handleGenerateReport = async () => {
     setGeneratingReport(true);
     try {
-      const response = await fetch('/api/v1/reports/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          patient_id: id,
-          symptoms: [],
-          clinical_notes: 'Generated from patient profile',
-          recommendations: [
-            'Complete echocardiography',
-            'Cardiology consultation within 30 days',
-            'Continue monitoring symptoms'
-          ]
-        })
+      const data = await reportService.generate({
+        patient_id: id,
+        symptoms: [],
+        clinical_notes: 'Generated from patient profile',
+        recommendations: [
+          'Complete echocardiography',
+          'Cardiology consultation within 30 days',
+          'Continue monitoring symptoms'
+        ]
       });
-      
-      const data = await response.json();
+
       if (data.success) {
-        alert(`Report generated successfully! Download: ${data.filename}`);
-        // Open download URL
-        window.open(`/api/v1/reports/download/${data.filename}`, '_blank');
+        // Open the PDF on the backend (absolute URL, not the static host)
+        window.open(reportService.downloadUrl(data.filename), '_blank');
       } else {
         alert('Failed to generate report: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Failed to generate report');
+      alert('Failed to generate report: ' + (error?.response?.data?.error || error.message));
     } finally {
       setGeneratingReport(false);
     }
@@ -351,7 +341,11 @@ const PatientProfile = () => {
   const normalRecordings = recordings.filter(r => r.prediction === 'Normal').length;
 
   return (
-    <div className="patient-profile-container">
+    <div className="dashboard-layout-wrapper">
+      <Sidebar user={user} />
+      <div className="dashboard-content">
+        <div className="dashboard-container">
+          <div className="patient-profile-container">
 
       {/* ========== HEADER ========== */}
       <header className="profile-header">
@@ -401,19 +395,6 @@ const PatientProfile = () => {
             selectedPoint={selectedAuscultationPoint}
             onClick={() => setShowMap(true)}
           />
-          <label className="btn-primary btn-upload">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            Analyze Sound
-            <input
-              type="file"
-              accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
-              onChange={handleFileUpload}
-              disabled={analyzing}
-              hidden
-            />
-          </label>
           <button
             className="btn-primary"
             onClick={handleGenerateReport}
@@ -466,12 +447,6 @@ const PatientProfile = () => {
           Recordings ({recordings.length})
         </button>
         <button
-          className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analysis')}
-        >
-          AI Analysis
-        </button>
-        <button
           className={`tab ${activeTab === 'prognosis' ? 'active' : ''}`}
           onClick={() => setActiveTab('prognosis')}
         >
@@ -498,12 +473,6 @@ const PatientProfile = () => {
               <div className="stat-card">
                 <span className="stat-value">{rhdRecordings}</span>
                 <span className="stat-label">RHD Detected</span>
-              </div>
-              <div className="stat-card" style={{ borderColor: rhdStatus.color }}>
-                <span className="stat-value" style={{ color: rhdStatus.color }}>
-                  {rhdStatus.label}
-                </span>
-                <span className="stat-label">RHD Status</span>
               </div>
             </div>
 
@@ -885,114 +854,6 @@ const PatientProfile = () => {
           </section>
         )}
 
-        {/* --- ANALYSIS TAB --- */}
-        {activeTab === 'analysis' && (
-          <section className="analysis-section">
-            <div className="analysis-container">
-              <div className="upload-zone">
-                <h3>AI Heart Sound Analysis</h3>
-                <p>Upload a PCG sample from the IoT stethoscope for automated valvular analysis.</p>
-                
-                <div className="analysis-auscultation-info">
-                  <span className="auscultation-label">Selected Point:</span>
-                  <span 
-                    className="auscultation-value"
-                    style={{
-                      color: AUSCULTATION_POINTS[selectedAuscultationPoint]?.color,
-                      fontWeight: '600'
-                    }}
-                  >
-                    {AUSCULTATION_POINTS[selectedAuscultationPoint]?.label || 'None'}
-                  </span>
-                  <button 
-                    className="btn-change-point"
-                    onClick={() => setShowMap(true)}
-                  >
-                    Change
-                  </button>
-                </div>
-                
-                {analyzing ? (
-                  <div className="analyzing-container">
-                    <div className="pulse-loader"></div>
-                    <p>Processing heart sound...</p>
-                    <div className="upload-progress-bar">
-                      <div 
-                        className="upload-progress-fill" 
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <span className="upload-progress-text">{uploadProgress}%</span>
-                  </div>
-                ) : (
-                  <label className="upload-btn">
-                    Select Audio File
-                    <input
-                      type="file"
-                      accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
-                      onChange={handleFileUpload}
-                      hidden
-                    />
-                  </label>
-                )}
-              </div>
-
-              {analysisResult && (
-                <div className="analysis-result-card">
-                  <div className={`analysis-header ${analysisResult.prediction?.prediction === 'RHD' ? 'bg-red' : 'bg-green'}`}>
-                    <h4>Classification Result</h4>
-                    <div className="result-value">
-                      {analysisResult.prediction?.prediction || 'Unknown'}
-                    </div>
-                    <div className="confidence-score">
-                      Confidence: {analysisResult.prediction?.confidence
-                        ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%`
-                        : '—'}
-                    </div>
-                    {analysisResult.prediction?.auscultation_label && (
-                      <div className="auscultation-result">
-                        Point: {analysisResult.prediction.auscultation_label}
-                      </div>
-                    )}
-                    {analysisResult.prediction?.severity && (
-                      <div 
-                        className="severity-grade"
-                        style={{ 
-                          backgroundColor: analysisResult.prediction.severity.bg,
-                          color: analysisResult.prediction.severity.color,
-                          padding: '4px 16px',
-                          borderRadius: '20px',
-                          marginTop: '8px',
-                          display: 'inline-block',
-                          fontWeight: '600'
-                        }}
-                      >
-                        Grade {analysisResult.prediction.severity.grade}: {analysisResult.prediction.severity.label}
-                      </div>
-                    )}
-                  </div>
-                  <div className="analysis-body">
-                    <p className="recommendation">
-                      <strong>Recommendation:</strong>
-                      {analysisResult.prediction?.prediction === 'RHD'
-                        ? ' Immediate referral for specialist echocardiography recommended.'
-                        : ' Findings normal. Schedule routine follow-up in 12 months.'}
-                    </p>
-                    <p className="timestamp">
-                      Processed: {new Date(analysisResult.timestamp).toLocaleString()}
-                    </p>
-                    {analysisResult.recording_id && (
-                      <p className="recording-id">
-                        Recording ID: {analysisResult.recording_id}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
         {/* --- PROGNOSIS TAB --- */}
         {activeTab === 'prognosis' && (
           <section className="prognosis-section">
@@ -1080,6 +941,9 @@ const PatientProfile = () => {
           </section>
         )}
 
+          </div>
+          </div>
+        </div>
       </div>
     </div>
   );
