@@ -77,123 +77,36 @@ def validate():
 # =========================
 # PREDICTION ENDPOINT (FIXED - JSON FIRST)
 # =========================
-@validation_bp.route('/predict-output', methods=['POST', 'OPTIONS'])
+@validation_bp.route('/predict', methods=['POST', 'OPTIONS'])
 def predict():
-    """Predict heart condition from recording"""
     if request.method == 'OPTIONS':
         return jsonify({}), 200
     
-    try:
-        # IMPORTANT: Check JSON FIRST before file upload
-        if request.is_json:
-            data = request.get_json()
-            if data:
-                print(f"📊 Predict with JSON data: {data}")
-                return jsonify({
-                    'success': True,
-                    'prediction': {
-                        'condition': 'Normal',
-                        'confidence': 0.92,
-                        'recommendations': ['Regular checkup recommended'],
-                        'based_on': 'symptom_analysis'
-                    },
-                    'data_received': data,
-                    'source': 'json_input'
-                })
-        
-        # Handle file upload (only if not JSON)
-        if 'file' in request.files and request.files.get('file'):
-            file = request.files.get('file')
-            if not file or file.filename == '':
-                return jsonify({'error': 'No file provided'}), 400
-            
-            print(f"📁 Predict with file: {file.filename}")
-            
-            # Read the file
-            file_data = file.read()
-            file_size = len(file_data)
-            
-            # Try to process the file
-            try:
-                # Save to temp file for processing
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-                    temp_file.write(file_data)
-                    temp_file_path = temp_file.name
-                
-                print(f"✅ File saved to temp: {temp_file_path}")
-                
-                # Mock prediction - replace with your actual ML model
-                prediction = {
-                    'condition': 'Normal',
-                    'confidence': 0.95,
-                    'recommendations': ['No action needed', 'Continue monitoring'],
-                    'based_on': 'audio_analysis'
-                }
-                
-                # Clean up temp file
-                try:
-                    os.unlink(temp_file_path)
-                    print(f"🗑️ Temp file cleaned up: {temp_file_path}")
-                except Exception as e:
-                    print(f"⚠️ Could not clean up temp file: {e}")
-                
-                return jsonify({
-                    'success': True,
-                    'prediction': prediction,
-                    'file_name': file.filename,
-                    'file_size': file_size,
-                    'source': 'file_upload'
-                })
-                
-            except Exception as e:
-                print(f"❌ Audio processing error: {str(e)}")
-                # Return a mock prediction even if processing fails
-                return jsonify({
-                    'success': True,
-                    'prediction': {
-                        'condition': 'Normal',
-                        'confidence': 0.80,
-                        'recommendations': ['Please try again with a clear recording'],
-                        'based_on': 'fallback_analysis'
-                    },
-                    'file_name': file.filename,
-                    'file_size': file_size,
-                    'source': 'file_upload_fallback',
-                    'processing_error': str(e)
-                })
-        
-        # Handle form data with file
-        if request.form:
-            print(f"📋 Predict with form data: {request.form}")
-            return jsonify({
-                'success': True,
-                'prediction': {
-                    'condition': 'Normal',
-                    'confidence': 0.90,
-                    'recommendations': ['Regular checkup recommended'],
-                    'based_on': 'form_data_analysis'
-                },
-                'data_received': dict(request.form),
-                'source': 'form_data'
-            })
-        
-        # Handle empty requests
-        print("📭 Predict with empty request")
-        return jsonify({
-            'success': True,
-            'message': 'Prediction successful (no data provided)',
-            'hint': 'Send a file or JSON data for actual prediction',
-            'source': 'empty'
-        })
-        
-    except Exception as e:
-        print(f"❌ Prediction error: {str(e)}")
-        return jsonify({
-            'error': str(e),
-            'message': 'Prediction failed',
-            'source': 'error'
-        }), 500
-
+    print(f"🔍 Predict received: is_json={request.is_json}, files={list(request.files.keys())}, form={list(request.form.keys())}")
+    
+    # 1. If JSON (manual symptoms)
+    if request.is_json:
+        data = request.get_json()
+        if data:
+            print(f"📊 Predict JSON data: {data}")
+            # ... return mock prediction ...
+    
+    # 2. If file upload
+    if 'file' in request.files:
+        file = request.files['file']
+        if file and file.filename != '':
+            print(f"📁 Predict file: {file.filename}, size: {len(file.read())}")
+            file.seek(0)  # reset after read
+            # Process file...
+            return jsonify({...})
+    
+    # 3. If form data (maybe file sent without 'file' key)
+    if request.form:
+        print(f"📋 Predict form data: {request.form}")
+        # Possibly handle if file is in form data?
+    
+    print("❌ No file or JSON found")
+    return jsonify({'error': 'No file uploaded'}), 400
 # =========================
 # HEALTH CHECK
 # =========================

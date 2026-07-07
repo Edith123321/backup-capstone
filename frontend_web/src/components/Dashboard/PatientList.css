@@ -1,17 +1,23 @@
-/* frontend_web/src/components/Dashboard/PatientList.css */
+/* ========================================
+   PATIENT LIST - Main Container
+   ======================================== */
 .patients-container {
   padding: 32px;
   max-width: 1200px;
-  margin-left: 120px;
-  
+  margin-left: 260px;
+  transition: margin-left 0.3s ease;
 }
 
-/* Header */
+/* ========================================
+   HEADER
+   ======================================== */
 .patients-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .patients-title {
@@ -28,7 +34,9 @@
   margin: 0;
 }
 
-/* Stats Grid */
+/* ========================================
+   STATS GRID
+   ======================================== */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -100,7 +108,9 @@
   font-weight: 500;
 }
 
-/* Table Wrapper */
+/* ========================================
+   TABLE WRAPPER
+   ======================================== */
 .patients-table-wrapper {
   background: white;
   border-radius: 12px;
@@ -108,7 +118,9 @@
   overflow: hidden;
 }
 
-/* Table Toolbar */
+/* ========================================
+   TABLE TOOLBAR
+   ======================================== */
 .table-toolbar {
   display: flex;
   justify-content: space-between;
@@ -123,6 +135,7 @@
   position: relative;
   flex: 1;
   min-width: 200px;
+  max-width: 400px;
 }
 
 .search-icon {
@@ -131,6 +144,7 @@
   top: 50%;
   transform: translateY(-50%);
   color: #94a3b8;
+  pointer-events: none;
 }
 
 .search-input {
@@ -157,14 +171,18 @@
   white-space: nowrap;
 }
 
-/* Table */
+/* ========================================
+   TABLE
+   ======================================== */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .patients-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 700px;
 }
 
 .patients-table thead {
@@ -180,6 +198,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid #e8edf2;
+  white-space: nowrap;
 }
 
 .patients-table td {
@@ -187,6 +206,7 @@
   border-bottom: 1px solid #f1f5f9;
   color: #1e293b;
   font-size: 0.95rem;
+  vertical-align: middle;
 }
 
 .patients-table tbody tr:hover {
@@ -201,7 +221,9 @@
   text-align: center;
 }
 
-/* Patient Name */
+/* ========================================
+   PATIENT NAME WITH AVATAR
+   ======================================== */
 .patient-name {
   display: flex;
   align-items: center;
@@ -223,7 +245,13 @@
   flex-shrink: 0;
 }
 
-/* Badges */
+.patient-name-text {
+  font-weight: 500;
+}
+
+/* ========================================
+   BADGES
+   ======================================== */
 .age-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -274,7 +302,9 @@
   white-space: nowrap;
 }
 
-/* Action Button */
+/* ========================================
+   ACTION BUTTONS
+   ======================================== */
 .btn-view {
   display: inline-flex;
   align-items: center;
@@ -304,7 +334,6 @@
   stroke: white;
 }
 
-/* Buttons */
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -318,6 +347,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .btn-primary:hover {
@@ -326,23 +356,9 @@
   box-shadow: 0 4px 16px rgba(0, 70, 79, 0.2);
 }
 
-/* Empty State */
-.empty-state {
-  text-align: center !important;
-  padding: 60px 20px !important;
-}
-
-.empty-state p {
-  color: #94a3b8;
-  font-size: 1.1rem;
-  margin: 16px 0 20px 0;
-}
-
-.empty-state svg {
-  opacity: 0.5;
-}
-
-/* Pagination */
+/* ========================================
+   PAGINATION
+   ======================================== */
 .pagination {
   display: flex;
   justify-content: space-between;
@@ -362,6 +378,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .pagination-btn {
@@ -397,7 +414,27 @@
   cursor: not-allowed;
 }
 
-/* Loading State */
+/* ========================================
+   EMPTY STATE
+   ======================================== */
+.empty-state {
+  text-align: center !important;
+  padding: 60px 20px !important;
+}
+
+.empty-state p {
+  color: #94a3b8;
+  font-size: 1.1rem;
+  margin: 16px 0 20px 0;
+}
+
+.empty-state svg {
+  opacity: 0.5;
+}
+
+/* ========================================
+   LOADING STATE
+   ======================================== */
 .patients-loading {
   display: flex;
   flex-direction: column;
@@ -425,7 +462,9 @@
   font-size: 1rem;
 }
 
-/* Error State */
+/* ========================================
+   ERROR STATE
+   ======================================== */
 .patients-error {
   display: flex;
   align-items: center;
@@ -471,22 +510,43 @@
   box-shadow: 0 4px 16px rgba(220, 38, 38, 0.2);
 }
 
-/* Responsive */
+/* ========================================
+   SIDEBAR COLLAPSED STATE
+   ======================================== */
+.sidebar.collapsed ~ .patients-container {
+  margin-left: 70px;
+}
+
+/* ========================================
+   RESPONSIVE BREAKPOINTS
+   ======================================== */
+
+/* Tablet */
 @media (max-width: 1024px) {
+  .patients-container {
+    margin-left: 220px;
+    padding: 24px;
+  }
+  
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
   }
 }
 
+/* Mobile */
 @media (max-width: 768px) {
   .patients-container {
+    margin-left: 0 !important;
     padding: 16px;
+    padding-top: 80px;
   }
 
   .patients-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
+    gap: 12px;
+    margin-bottom: 20px;
   }
 
   .patients-title {
@@ -494,44 +554,268 @@
   }
 
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+  }
+
+  .stat-number {
+    font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.75rem;
   }
 
   .table-toolbar {
     flex-direction: column;
     align-items: stretch;
+    padding: 12px 16px;
+    gap: 8px;
   }
 
-  .pagination {
-    flex-direction: column;
-    align-items: center;
+  .search-wrapper {
+    max-width: 100%;
+    min-width: auto;
   }
 
-  .patients-table th,
-  .patients-table td {
-    padding: 10px 14px;
-    font-size: 0.85rem;
+  .search-input {
+    font-size: 0.9rem;
+    padding: 8px 12px 8px 36px;
   }
 
   .patient-count {
     text-align: center;
   }
+
+  .btn-primary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .patients-table th,
+  .patients-table td {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+  }
+
+  .patients-table {
+    min-width: 600px;
+  }
+
+  .pagination {
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 16px;
+  }
+
+  .pagination-controls {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .pagination-btn {
+    min-width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+
+  .address-cell {
+    max-width: 80px;
+  }
+
+  .age-badge {
+    font-size: 0.75rem;
+    padding: 1px 6px;
+  }
+
+  .gender-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+  }
 }
 
+/* Small Mobile */
 @media (max-width: 480px) {
-  .patients-table th:nth-child(4),
-  .patients-table td:nth-child(4),
+  .patients-container {
+    padding: 12px;
+    padding-top: 76px;
+  }
+
+  .patients-title {
+    font-size: 1.25rem;
+  }
+
+  .patients-subtitle {
+    font-size: 0.85rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 12px;
+    gap: 10px;
+    border-radius: 8px;
+  }
+
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+
+  .stat-number {
+    font-size: 1.1rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+  }
+
+  /* Hide less important columns */
   .patients-table th:nth-child(5),
-  .patients-table td:nth-child(5) {
+  .patients-table td:nth-child(5),
+  .patients-table th:nth-child(6),
+  .patients-table td:nth-child(6) {
     display: none;
+  }
+
+  .patients-table th,
+  .patients-table td {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  .patients-table {
+    min-width: 450px;
+  }
+
+  .patient-name-text {
+    font-size: 0.85rem;
+  }
+
+  .patient-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
   }
 
   .btn-view {
     padding: 4px 10px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    gap: 4px;
   }
 
   .btn-view span {
     display: none;
+  }
+
+  .btn-primary {
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  .pagination-info {
+    font-size: 0.8rem;
+  }
+
+  .pagination-btn {
+    min-width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+    padding: 0 6px;
+  }
+
+  .empty-state {
+    padding: 40px 16px !important;
+  }
+
+  .empty-state p {
+    font-size: 0.95rem;
+  }
+}
+
+/* Ultra Small Mobile */
+@media (max-width: 360px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .patients-table th:nth-child(4),
+  .patients-table td:nth-child(4) {
+    display: none;
+  }
+
+  .patients-table {
+    min-width: 320px;
+  }
+
+  .patients-table th,
+  .patients-table td {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+  }
+
+  .btn-view {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
+
+  .pagination-controls {
+    gap: 4px;
+  }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+@media print {
+  .patients-container {
+    margin: 0;
+    padding: 20px;
+  }
+
+  .btn-primary,
+  .btn-view,
+  .btn-retry,
+  .search-wrapper,
+  .pagination {
+    display: none !important;
+  }
+
+  .stat-card {
+    border: 1px solid #ddd;
+    break-inside: avoid;
+  }
+
+  .patients-table-wrapper {
+    border: 1px solid #ddd;
+  }
+
+  .patients-table th {
+    background: #f0f0f0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .gender-badge,
+  .age-badge,
+  .age-group-badge {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
