@@ -5,7 +5,7 @@ import tempfile
 import traceback
 import warnings
 import numpy as np
-import joblib  # Use joblib to match notebook saving
+import joblib 
 from flask import request, jsonify, Blueprint
 from werkzeug.utils import secure_filename
 
@@ -21,9 +21,16 @@ except ImportError:
     LIBROSA_AVAILABLE = False
 
 # =========================
+# HELPER UTILS (Required by other routes)
+# =========================
+ALLOWED_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'aiff'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# =========================
 # BLUEPRINT INITIALIZATION
 # =========================
-# We define this early so app.py can always find the name
 heart_sound_bp = Blueprint('heart_sound', __name__)
 
 # =========================
@@ -31,7 +38,6 @@ heart_sound_bp = Blueprint('heart_sound', __name__)
 # =========================
 current_file = os.path.abspath(__file__)
 current_dir = os.path.dirname(current_file)
-# Moving up levels to reach project root: screening -> v1 -> api -> backend -> root
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))
 MODEL_PATH = os.path.join(project_root, 'ai_model', 'models', 'mitral_classifier_v4')
 
@@ -84,7 +90,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
         rolloff = np.argmax(cumsum >= 0.85 * cumsum[-1, :], axis=0)
         features['spec_rolloff'] = np.mean(rolloff) * sr / 1024
         
-        # 4. MFCC features (Matching Loop Order in training)
+        # 4. MFCC features 
         mfccs = librosa.feature.mfcc(y=signal, sr=sr, n_mfcc=13, n_fft=1024)
         for i in range(13):
             features[f'mfcc_{i}'] = np.mean(mfccs[i])
@@ -101,7 +107,6 @@ def extract_features(filepath, sr=4000, duration=10.0):
         # 6. Tempo
         try:
             tempo, _ = librosa.beat.beat_track(y=signal, sr=sr)
-            # Ensure it's a float
             features['tempo'] = float(tempo[0]) if isinstance(tempo, (np.ndarray, list)) else float(tempo)
         except:
             features['tempo'] = 0.0
@@ -123,8 +128,7 @@ def extract_features(filepath, sr=4000, duration=10.0):
             mask = (pow_freqs >= low) & (pow_freqs < high)
             features[f'band_{i}_power'] = np.sum(power[mask]) / total_p
 
-        # IMPORTANT: Returning values in the exact order they were created in the dict
-        # This matches the column order of X_train in your notebook
+        # Return values in dict order (matches X_train columns)
         feature_vector = np.array([features[k] for k in features.keys()])
         return feature_vector.reshape(1, -1)
         
@@ -152,7 +156,6 @@ class HeartSoundClassifier:
             if os.path.exists(m_file) and os.path.exists(s_file):
                 self.model = joblib.load(m_file)
                 self.scaler = joblib.load(s_file)
-                # Identify expected input size from the scaler
                 self.feature_count = self.scaler.n_features_in_
                 print(f"✅ Scaler & Model Loaded. Expecting {self.feature_count} features.")
                 return True
@@ -169,12 +172,10 @@ class HeartSoundClassifier:
         if features is None:
             return None
 
-        # Guard against minor feature count mismatches
         if features.shape[1] != self.feature_count:
             print(f"⚠️ Mismatch: Got {features.shape[1]}, Expected {self.feature_count}")
             return None
 
-        # Transform and Predict
         features_scaled = self.scaler.transform(features)
         pred = self.model.predict(features_scaled)[0]
         prob = self.model.predict_proba(features_scaled)[0]
@@ -211,7 +212,6 @@ def predict():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
-    # Save to temp file
     fd, path = tempfile.mkstemp(suffix='.wav')
     try:
         with os.fdopen(fd, 'wb') as tmp:
@@ -220,7 +220,7 @@ def predict():
         result = classifier.predict(path)
         
         if result is None:
-            return jsonify({'error': 'Prediction failed', 'message': 'Check server logs for feature mismatch'}), 500
+            return jsonify({'error': 'Prediction failed', 'message': 'Feature extraction error'}), 500
             
         return jsonify({
             'success': True,
