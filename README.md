@@ -82,7 +82,7 @@ Rheumatic Heart Disease (RHD) remains a leading cause of preventable cardiac dea
 ### Dataset & Preprocessing
 The model was trained on a balanced hybrid dataset consisting of over 8,000 clinical recordings (PhysioNet & CirCOR Digiscope). 
 1.  **Noise Mitigation:** A 5th-order Butterworth Bandpass filter (20Hz - 400Hz) is applied to isolate valvular murmurs from ambient environmental noise.
-2.  **Feature Extraction:** 1D audio signals are transformed into 2D Mel Spectrograms. We extract 40 Mel-frequency cepstral coefficients (MFCCs) to represent the "texture" of the murmur.
+2.  **Feature Extraction:** Each recording is reduced to a **51-dimensional time-frequency feature vector** — basic statistics, zero-crossing rate, spectral descriptors, **13 MFCCs (mean + std = 26 features)**, mel-spectrogram summaries, tempo, envelope, and frequency-band power ratios. In deployment these are computed by a Numba-safe NumPy/SciPy pipeline (see `docs/technical_specification.md`).
 
 ### Architecture & Performance
 *   **Model:** Random Forest Classifier (n_estimators=100).
@@ -90,7 +90,7 @@ The model was trained on a balanced hybrid dataset consisting of over 8,000 clin
 *   **Metrics:**
     *   **Accuracy:** 98.4%
     *   **Area Under Curve (AUC):** 0.9995
-    *   **Precision/Recall:** Optimized for high sensitivity to ensure zero "False Negatives" for severe RHD.
+    *   **Precision / Recall:** 1.00 / 0.969 on the held-out test set (n=64) — 1 false negative, prioritizing sensitivity. See [Clinical Evaluation Report](docs/clinical_evaluation_report.md).
 
 ### Validation Strategy
 We implemented a **Patient-Level Split**. This ensures that segments from the same patient are never shared between the training and testing sets, preventing "data leakage" and ensuring the model works on entirely new individuals.
@@ -107,7 +107,7 @@ We implemented a **Patient-Level Split**. This ensures that segments from the sa
 ### Backend Installation
 ```bash
 # Navigate to backend directory
-cd capstone/backend
+cd capstone-backup/backend
 
 # Create virtual environment
 python -m venv venv
@@ -123,7 +123,7 @@ python -c "from services.database import init_db; init_db()"
 ### Frontend Installation
 ```bash
 # Navigate to frontend directory
-cd capstone/frontend_web
+cd capstone-backup/frontend_web
 
 # Install dependencies
 npm install
@@ -182,15 +182,17 @@ npm run dev
 | :--- | :--- |
 | VDD | 3.3V |
 | GND | GND |
-| SD | GPIO 32 |
+| SD | GPIO 35 |
 | WS | GPIO 25 |
-| SCK | GPIO 33 |
+| SCK | GPIO 26 |
+
+_Pin assignments match `iot/src/Config.h` (`I2S_DIN_PIN`, `I2S_WS_PIN`, `I2S_BCK_PIN`)._
 
 ### Firmware Upload
-1.  Open `iot/src/main.ino` in Arduino IDE.
-2.  Install `ESP32` board support and `WebSocketsServer` library.
-3.  Configure your WiFi SSID/Password in `Config.h`.
-4.  Upload to the ESP32 board.
+1.  Open the `iot/` project in PlatformIO (VS Code) — entry point `iot/src/Saka_Stethoscope.ino`.
+2.  Dependencies (`WebSockets`, `ArduinoJson`, `WiFiManager`, `ArduinoFFT`) are declared in `platformio.ini` and installed automatically.
+3.  Configure your WiFi SSID/Password in `iot/src/Config.h`.
+4.  Build and upload to the ESP32 board (`pio run -t upload`).
 
 ---
 
@@ -224,5 +226,6 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 *    [Technical Walkthrough Video](https://canva.link/r39gcls1lkub60j)
 *    [Live Demo Link](https://backup-capstone-mbq6.onrender.com)
-*    [Full Research Proposal](docs/proposal.pdf)
-*    [WandB Training Dashboard](https://wandb.ai/placeholder)
+*    [Technical Specification](docs/technical_specification.md)
+*    [UML Suite](docs/uml.md) · [Clinical Evaluation Report](docs/clinical_evaluation_report.md)
+*    WandB Training Logs — archived locally under `ai_model/src/wandb/` (run `4nprglcs`). _Replace this with your public W&B dashboard URL when available._
