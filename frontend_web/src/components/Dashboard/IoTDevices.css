@@ -78,6 +78,34 @@
   box-shadow: 0 4px 16px rgba(0, 70, 79, 0.2);
 }
 
+.header-actions {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-bluetooth {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--info);
+  background: var(--info-surface);
+  color: var(--info);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-bluetooth:hover {
+  background: var(--info);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
 .btn-secondary {
   background: white;
   color: var(--text-strong);

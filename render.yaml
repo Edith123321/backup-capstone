@@ -28,6 +28,18 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
+      # Persist the SQLite DB on a mounted disk (see `disk` below). Without a
+      # persistent disk the free-tier filesystem is ephemeral and created
+      # patients/recordings are lost on cold start.
+      - key: DATABASE_PATH
+        value: /var/data/doctors.db
+    # A persistent disk requires a paid instance (not available on `plan: free`).
+    # On the free plan, remove this block and DATABASE_PATH above and accept
+    # that data resets on restart, or migrate to Render Postgres.
+    disk:
+      name: saka-data
+      mountPath: /var/data
+      sizeGB: 1
 
   # ---------------- Frontend (static) ----------------
   - type: web
