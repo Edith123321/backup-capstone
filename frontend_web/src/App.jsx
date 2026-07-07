@@ -82,7 +82,7 @@ function AppContent() {
       
       <Route path="/patient/:id" element={
         <ProtectedRoute>
-          <DoctorDashboard />
+          <Pa />
         </ProtectedRoute>
       } />
       
