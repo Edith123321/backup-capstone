@@ -1,13 +1,26 @@
-/* frontend_web/src/components/Dashboard/Encounter.css */
-
+/* ========================================
+   ENCOUNTER - Main Container
+   ======================================== */
 .new-encounter-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
-  margin-left: 120px;
+  margin-left: 260px;
+  transition: margin-left 0.3s ease;
+  width: calc(100% - 260px);
 }
 
-/* Header */
+/* ========================================
+   SIDEBAR COLLAPSED STATE
+   ======================================== */
+.sidebar.collapsed ~ .new-encounter-container {
+  margin-left: 70px;
+  width: calc(100% - 70px);
+}
+
+/* ========================================
+   HEADER
+   ======================================== */
 .encounter-header {
   margin-bottom: 30px;
 }
@@ -22,9 +35,12 @@
 .encounter-header p {
   color: #718096;
   font-size: 16px;
+  margin: 0;
 }
 
-/* Sections */
+/* ========================================
+   SECTIONS
+   ======================================== */
 .encounter-section {
   background: white;
   border-radius: 16px;
@@ -45,26 +61,31 @@
 .section-header .section-icon {
   color: #667eea;
   font-size: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .section-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: white;
+  color: #2d3748;
   margin: 0;
 }
 
 .section-badge {
   margin-left: auto;
-  font-size: 6px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 500;
   padding: 4px 12px;
   background: #ebf4ff;
   color: #667eea;
   border-radius: 20px;
+  white-space: nowrap;
 }
 
-/* Form Grid */
+/* ========================================
+   FORM GRID
+   ======================================== */
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -96,6 +117,8 @@
   font-size: 14px;
   transition: all 0.2s;
   font-family: inherit;
+  background: white;
+  width: 100%;
 }
 
 .form-group input::placeholder,
@@ -111,7 +134,14 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-/* Patient Search */
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ========================================
+   PATIENT SEARCH
+   ======================================== */
 .patient-search {
   position: relative;
   margin-bottom: 16px;
@@ -127,6 +157,7 @@
   position: absolute;
   left: 12px;
   color: #a0aec0;
+  pointer-events: none;
 }
 
 .search-input-wrapper input {
@@ -136,6 +167,7 @@
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
+  background: white;
 }
 
 .search-input-wrapper input:focus {
@@ -182,7 +214,9 @@
   color: #718096;
 }
 
-/* Recording Controls */
+/* ========================================
+   RECORDING CONTROLS
+   ======================================== */
 .recording-controls {
   display: flex;
   flex-direction: column;
@@ -228,6 +262,7 @@
   transition: all 0.3s;
   background: #f7fafc;
   gap: 4px;
+  min-height: 120px;
 }
 
 .upload-label:hover {
@@ -285,9 +320,15 @@
   justify-content: center;
 }
 
-.btn-record:hover {
+.btn-record:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(39, 103, 73, 0.3);
+}
+
+.btn-record:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-record.recording {
@@ -305,7 +346,9 @@
   color: #718096;
 }
 
-/* Audio Preview */
+/* ========================================
+   AUDIO PREVIEW
+   ======================================== */
 .audio-preview {
   display: flex;
   align-items: center;
@@ -313,6 +356,7 @@
   padding: 12px 16px;
   background: #f7fafc;
   border-radius: 8px;
+  flex-wrap: wrap;
 }
 
 .audio-player {
@@ -320,10 +364,12 @@
   align-items: center;
   gap: 8px;
   flex: 1;
+  min-width: 200px;
 }
 
 .audio-player audio {
   flex: 1;
+  min-width: 150px;
 }
 
 .btn-icon {
@@ -342,7 +388,9 @@
   background: #fff5f5;
 }
 
-/* Buttons */
+/* ========================================
+   BUTTONS
+   ======================================== */
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -360,7 +408,7 @@
 
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(45, 55, 72, 0.3);
 }
 
 .btn-primary:disabled {
@@ -388,7 +436,9 @@
   background: #cbd5e0;
 }
 
-/* Processing */
+/* ========================================
+   PROCESSING INDICATOR
+   ======================================== */
 .processing-indicator {
   display: flex;
   align-items: center;
@@ -402,9 +452,12 @@
 .processing-indicator p {
   color: #4a5568;
   font-weight: 500;
+  margin: 0;
 }
 
-/* Validation Error */
+/* ========================================
+   VALIDATION ERROR
+   ======================================== */
 .validation-error {
   display: flex;
   gap: 16px;
@@ -423,11 +476,13 @@
 .validation-error .error-content h4 {
   color: #9b2c2c;
   margin-bottom: 4px;
+  margin-top: 0;
 }
 
 .validation-error .error-content p {
   color: #742a2a;
   margin-bottom: 8px;
+  margin-top: 0;
 }
 
 .validation-issues {
@@ -440,7 +495,9 @@
   font-size: 14px;
 }
 
-/* Prediction Result */
+/* ========================================
+   PREDICTION RESULT
+   ======================================== */
 .prediction-result {
   padding: 20px;
   background: #f7fafc;
@@ -450,6 +507,7 @@
 .prediction-result h3 {
   margin-bottom: 12px;
   color: #2d3748;
+  margin-top: 0;
 }
 
 .prediction-badge {
@@ -529,7 +587,9 @@
   background: #fc8181;
 }
 
-/* Quality Score */
+/* ========================================
+   QUALITY SCORE
+   ======================================== */
 .quality-score {
   margin-top: 12px;
   padding-top: 12px;
@@ -568,7 +628,9 @@
   background: #fc8181;
 }
 
-/* Encounter Actions */
+/* ========================================
+   ENCOUNTER ACTIONS
+   ======================================== */
 .encounter-actions {
   display: flex;
   gap: 16px;
@@ -578,7 +640,9 @@
   border-top: 1px solid #e2e8f0;
 }
 
-/* Messages */
+/* ========================================
+   MESSAGES
+   ======================================== */
 .success-message {
   display: flex;
   align-items: center;
@@ -621,6 +685,7 @@
 
 .error-message .MuiSvgIcon-root {
   color: #e53e3e;
+  flex-shrink: 0;
 }
 
 .error-message button {
@@ -633,56 +698,387 @@
   padding: 4px;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .form-grid {
-    grid-template-columns: 1fr;
+/* ========================================
+   RESPONSIVE BREAKPOINTS
+   ======================================== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .new-encounter-container {
+    margin-left: 220px;
+    padding: 20px;
+    width: calc(100% - 220px);
   }
-  
+
   .recording-methods {
     flex-direction: column;
   }
-  
+
   .divider {
     padding: 4px 0;
     justify-content: center;
   }
-  
+
+  .upload-section,
+  .record-section {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .record-section {
+    padding-top: 8px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .new-encounter-container {
+    margin-left: 0 !important;
+    padding: 16px;
+    padding-top: 80px;
+    width: 100% !important;
+  }
+
+  .encounter-header h1 {
+    font-size: 24px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .form-group.full-width {
+    grid-column: 1;
+  }
+
+  .encounter-section {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .section-header {
+    flex-wrap: wrap;
+  }
+
+  .section-badge {
+    margin-left: 0;
+  }
+
+  .recording-methods {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .divider {
+    padding: 4px 0;
+    justify-content: center;
+  }
+
+  .upload-label {
+    min-height: 100px;
+    padding: 20px;
+  }
+
+  .btn-record {
+    padding: 10px 20px;
+    font-size: 15px;
+  }
+
+  .audio-preview {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .audio-player {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .audio-player audio {
+    width: 100%;
+  }
+
   .encounter-actions {
     flex-direction: column;
+    gap: 12px;
   }
-  
+
   .encounter-actions button {
     width: 100%;
     justify-content: center;
   }
-}
 
-@media (max-width: 480px) {
-  .new-encounter-container {
-    padding: 12px;
-  }
-  
-  .encounter-section {
-    padding: 16px;
-  }
-  
-  .section-header {
-    flex-wrap: wrap;
-  }
-  
-  .section-badge {
-    margin-left: 0;
-  }
-  
   .prediction-badge {
     flex-direction: column;
     text-align: center;
+    width: 100%;
   }
-  
+
   .validation-error {
     flex-direction: column;
     align-items: center;
     text-align: center;
+  }
+
+  .validation-error .error-icon {
+    font-size: 28px;
+  }
+
+  .search-results {
+    max-height: 150px;
+  }
+
+  .processing-indicator {
+    flex-direction: column;
+    padding: 16px;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+  .new-encounter-container {
+    padding: 12px;
+    padding-top: 76px;
+  }
+
+  .encounter-header h1 {
+    font-size: 20px;
+  }
+
+  .encounter-header p {
+    font-size: 14px;
+  }
+
+  .encounter-section {
+    padding: 12px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+  }
+
+  .section-header h2 {
+    font-size: 16px;
+  }
+
+  .section-header .section-icon {
+    font-size: 20px;
+  }
+
+  .section-badge {
+    font-size: 10px;
+    padding: 3px 10px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .form-group label {
+    font-size: 13px;
+  }
+
+  .upload-label {
+    min-height: 80px;
+    padding: 16px;
+  }
+
+  .upload-label .MuiSvgIcon-root {
+    font-size: 28px;
+  }
+
+  .upload-label span {
+    font-size: 13px;
+  }
+
+  .btn-record {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .audio-preview {
+    padding: 10px 12px;
+  }
+
+  .prediction-badge {
+    padding: 10px 16px;
+  }
+
+  .prediction-label {
+    font-size: 18px;
+  }
+
+  .prediction-confidence {
+    font-size: 13px;
+  }
+
+  .prob-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .prob-bar span {
+    min-width: auto;
+  }
+
+  .bar-track {
+    width: 100%;
+  }
+
+  .validation-error {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .validation-error .error-content h4 {
+    font-size: 16px;
+  }
+
+  .validation-error .error-content p {
+    font-size: 14px;
+  }
+
+  .validation-issues li {
+    font-size: 13px;
+  }
+
+  .success-message {
+    flex-direction: column;
+    text-align: center;
+    padding: 14px;
+  }
+
+  .success-message .MuiSvgIcon-root {
+    font-size: 28px;
+  }
+
+  .error-message {
+    font-size: 13px;
+    padding: 10px 14px;
+  }
+
+  .search-input-wrapper input {
+    padding: 8px 12px 8px 36px;
+    font-size: 13px;
+  }
+
+  .search-input-wrapper .search-icon {
+    left: 10px;
+  }
+
+  .search-result-item {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .processing-indicator {
+    padding: 12px;
+  }
+
+  .processing-indicator p {
+    font-size: 14px;
+  }
+}
+
+/* Ultra Small Mobile */
+@media (max-width: 360px) {
+  .new-encounter-container {
+    padding: 8px;
+    padding-top: 72px;
+  }
+
+  .encounter-section {
+    padding: 10px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .upload-label {
+    min-height: 60px;
+    padding: 12px;
+  }
+
+  .upload-label .MuiSvgIcon-root {
+    font-size: 24px;
+  }
+
+  .btn-record {
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .prediction-label {
+    font-size: 16px;
+  }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+@media print {
+  .new-encounter-container {
+    margin: 0 !important;
+    padding: 20px;
+    width: 100% !important;
+  }
+
+  .encounter-section {
+    border: 1px solid #ddd;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-record,
+  .btn-icon,
+  .upload-area input[type="file"],
+  .search-input-wrapper input {
+    display: none !important;
+  }
+
+  .upload-label {
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+  }
+
+  .section-badge {
+    background: #f0f0f0;
+    color: #333;
+  }
+
+  .prediction-badge {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .prediction-badge.normal {
+    background: #c6f6d5 !important;
+    border-color: #48bb78 !important;
+  }
+
+  .prediction-badge.abnormal {
+    background: #fed7d7 !important;
+    border-color: #fc8181 !important;
   }
 }
