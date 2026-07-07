@@ -1,0 +1,10 @@
+# Test dependencies.
+# Unit/integration tests also import the backend runtime (numpy, scipy,
+# scikit-learn, joblib, soundfile) — install ../backend/requirements.txt too.
+pytest>=8.0
+pytest-timeout>=2.1
+pytest-env>=1.1
+pytest-cov>=5.0
+pytest-json-report>=1.5
+requests>=2.31
+PyJWT>=2.8

@@ -68,8 +68,10 @@ def _mel_filterbank(sr=SR, n_fft=N_FFT, n_mels=128, fmin=0.0, fmax=None):
         mels = f / f_sp
         min_log_hz, min_log_mel = 1000.0, 1000.0 / f_sp
         logstep = np.log(6.4) / 27.0
-        return np.where(f >= min_log_hz,
-                        min_log_mel + np.log(f / min_log_hz) / logstep, mels)
+        # np.where evaluates both branches, so guard log(0) for the low-freq bin.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            log_region = min_log_mel + np.log(f / min_log_hz) / logstep
+        return np.where(f >= min_log_hz, log_region, mels)
 
     def mel_to_hz(mels):
         mels = np.asanyarray(mels, dtype=float)
