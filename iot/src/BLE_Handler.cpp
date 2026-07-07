@@ -53,11 +53,14 @@ bool BLE_Handler::sendStatus(const String& status) {
 
 void BLE_Handler::end() {
     if (_pServer) {
-        _pServer->stopAdvertising();
-        _pServer->clearServices();
+        // BLEServer has no stopAdvertising/clearServices; stop advertising via
+        // the advertising object and let deinit(true) release the stack.
+        BLEDevice::getAdvertising()->stop();
         _pServer = nullptr;
+        _pCharacteristic = nullptr;
+        _pService = nullptr;
     }
-    BLEDevice::deinit();
+    BLEDevice::deinit(true);
     _isConnected = false;
 }
 
