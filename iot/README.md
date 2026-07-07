@@ -23,7 +23,7 @@ Saka Stethoscope is an IoT-enabled digital stethoscope designed for heart sound 
 | Component | Specification |
 |-----------|---------------|
 | **Microcontroller** | ESP32 Dev Board |
-| **Microphone** | Piezoelectric (heart sound optimized) |
+| **Microphone** | INMP441 I2S MEMS (heart-sound optimized) |
 | **I2S Audio** | 4kHz sample rate, 16-bit mono |
 | **Power** | 3.7V LiPo or USB |
 | **Connectivity** | WiFi (2.4GHz), BLE 4.2 |
