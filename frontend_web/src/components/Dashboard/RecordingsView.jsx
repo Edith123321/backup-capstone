@@ -71,7 +71,7 @@ const getSeverityGrade = (prediction, confidence) => {
 // ============================================
 // MAIN COMPONENT
 // ============================================
-const RecordingView = () => {
+const RecordingView = ({ recordings: propRecordings = [], onRefresh } = {}) => {
   const { patientId } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -91,12 +91,22 @@ const RecordingView = () => {
 
   // Fetch patient and recordings data
   const fetchData = useCallback(async () => {
-    if (!isAuthenticated || !patientId) return;
+    if (!isAuthenticated) return;
+
+    // Global mode: rendered as the dashboard "Recordings" tab with no patient in
+    // the URL. Show the recordings passed in by the dashboard instead of bailing.
+    if (!patientId) {
+      setPatient(null);
+      setRecordings(Array.isArray(propRecordings) ? propRecordings : []);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch patient details
       const patientData = await patientService.getPatientDetails(patientId);
       if (patientData?.patient) {
@@ -121,7 +131,7 @@ const RecordingView = () => {
     } finally {
       setLoading(false);
     }
-  }, [patientId, isAuthenticated]);
+  }, [patientId, isAuthenticated, propRecordings]);
 
   useEffect(() => {
     fetchData();
@@ -182,8 +192,9 @@ const RecordingView = () => {
         const saveResult = await databaseApi.saveRecording(recordingData);
         
         if (saveResult.success) {
-          // Refresh recordings list
+          // Refresh recordings list (and the dashboard's, if it passed a handler)
           await fetchData();
+          if (typeof onRefresh === 'function') onRefresh();
         }
 
         const severity = getSeverityGrade(result.prediction || result.class, result.confidence);

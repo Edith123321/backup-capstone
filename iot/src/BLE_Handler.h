@@ -6,6 +6,7 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <BLE2902.h>   // required for the notify descriptor used in BLE_Handler.cpp
 #include "Config.h"
 
 class BLE_Handler {
