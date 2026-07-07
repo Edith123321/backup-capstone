@@ -13,3 +13,4 @@ pyJwt
 python-dotenv  
 gunicorn
 flask_session
+requests
