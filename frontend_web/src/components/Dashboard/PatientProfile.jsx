@@ -1,4 +1,3 @@
-// frontend_web/src/components/Dashboard/PatientProfile.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -8,8 +7,9 @@ import './PatientProfile.css';
 const PatientProfile = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
-  const { user, token, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   
+  // State Management
   const [patient, setPatient] = useState(null);
   const [triageRecords, setTriageRecords] = useState([]);
   const [recordings, setRecordings] = useState([]);
@@ -19,126 +19,89 @@ const PatientProfile = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
 
-  // Fetch patient data
-  const fetchPatientData = useCallback(async () => {
-    if (!isAuthenticated) {
-      setError('Please log in to view patient details');
-      setLoading(false);
-      return;
-    }
+  /**
+   * FIX: RESET MECHANISM
+   * This clears the state every time the ID in the URL changes.
+   * This forces React to show the loading spinner and prevents showing old data.
+   */
+  useEffect(() => {
+    console.log("🔄 Navigation detected. Loading Patient ID:", patientId);
+    setPatient(null);
+    setTriageRecords([]);
+    setRecordings([]);
+    setError(null);
+    setLoading(true);
+    setAnalysisResult(null);
+    setActiveTab('overview');
+  }, [patientId]);
 
-    if (!patientId) {
-      setError('No patient ID provided');
-      setLoading(false);
-      return;
-    }
+  /**
+   * DATA FETCHING LOGIC
+   */
+  const fetchPatientData = useCallback(async () => {
+    if (authLoading || !isAuthenticated) return;
+    if (!patientId) return;
 
     try {
-      setLoading(true);
-      setError(null);
-      
-      console.log('Fetching patient data:', {
-        patientId,
-        userId: user?.id,
-        doctorId: user?.doctor_id || user?.id
-      });
-      
+      // API call to the unified backend
       const data = await patientService.getPatientDetails(patientId);
       
-      if (data.patient) {
+      if (data && data.patient) {
         setPatient(data.patient);
         setTriageRecords(data.triage || []);
         setRecordings(data.recordings || []);
+        setError(null);
       } else {
-        setError('Patient not found');
+        setError('Patient not found in the Saka database.');
       }
-      
     } catch (err) {
-      console.error('Error fetching patient data:', err);
-      setError(err.message || 'Failed to load patient data');
+      console.error('❌ Profile Fetch Error:', err);
+      setError(err.message || 'Failed to load patient records from server.');
     } finally {
       setLoading(false);
     }
-  }, [patientId, user, isAuthenticated]);
+  }, [patientId, isAuthenticated, authLoading]);
 
+  // Trigger fetch on mount or when ID/Auth changes
   useEffect(() => {
-    if (!authLoading) {
-      fetchPatientData();
-    }
-  }, [fetchPatientData, authLoading]);
+    fetchPatientData();
+  }, [fetchPatientData]);
 
-  // Handle heart sound analysis
+  /**
+   * ANALYSIS HANDLERS (The AI "Brain" Integration)
+   */
   const handleAnalyzeHeartSound = async (file) => {
-    if (!file) {
-      alert('Please select a heart sound file to analyze');
-      return;
-    }
-
+    if (!file) return;
     setAnalyzing(true);
     setAnalysisResult(null);
 
     try {
-      // First, validate the heart sound
-      const validateResult = await screeningService.validate(file);
-      console.log('Validation result:', validateResult);
-
-      // Then get prediction
+      console.log("🧠 Sending audio to AI Model for Patient:", patientId);
       const predictResult = await screeningService.predict(file);
-      console.log('Prediction result:', predictResult);
-
+      
       setAnalysisResult({
-        validation: validateResult,
         prediction: predictResult,
         timestamp: new Date().toISOString()
       });
 
-      // Refresh patient data to show new recording
+      // Refresh data so the new recording appears in the list
       await fetchPatientData();
-
     } catch (err) {
-      console.error('Analysis error:', err);
-      alert(`Analysis failed: ${err.message || 'Unknown error'}`);
+      console.error("❌ Analysis Error:", err);
+      alert(`AI Analysis failed: ${err.message}`);
     } finally {
       setAnalyzing(false);
     }
   };
 
-  // Handle file upload for analysis
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      handleAnalyzeHeartSound(file);
-    }
+    if (file) handleAnalyzeHeartSound(file);
   };
 
-  // Handle back navigation
-  const handleBack = () => {
-    navigate('/patients');
-  };
-
-  // Handle refresh
-  const handleRefresh = () => {
-    fetchPatientData();
-  };
-
-  // Handle new triage
-  const handleNewTriage = () => {
-    navigate(`/patient/${patientId}/triage/new`);
-  };
-
-  // Handle new recording
-  const handleNewRecording = () => {
-    navigate(`/patient/${patientId}/recording/new`);
-  };
-
-  // Calculate stats
-  const totalEncounters = triageRecords.length + recordings.length;
-  const abnormalResults = triageRecords.filter(t => 
-    t.triage_color === 'Red' || t.triage_color === 'Orange'
-  ).length;
-  const totalRecordings = recordings.length;
-
-  // Get RHD status display
+  /**
+   * UI HELPERS
+   */
   const getRHDStatusDisplay = (status) => {
     const statusMap = {
       'confirmed': { label: 'Confirmed RHD', color: '#dc2626', bg: '#fee2e2' },
@@ -149,95 +112,45 @@ const PatientProfile = () => {
     return statusMap[status] || statusMap.unknown;
   };
 
-  // If not authenticated, show login message
-  if (!isAuthenticated && !authLoading) {
-    return (
-      <div className="error-container">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <h3>Authentication Required</h3>
-        <p>Please log in to view patient details.</p>
-        <button className="btn-primary" onClick={() => navigate('/login')}>
-          Go to Login
-        </button>
-      </div>
-    );
-  }
-
-  // Loading state
-  if (loading || authLoading) {
+  // 1. Loading State
+  if (authLoading || (loading && !patient)) {
     return (
       <div className="profile-loading">
         <div className="loading-spinner"></div>
-        <p>Loading patient profile...</p>
+        <p>Synchronizing with Saka Backend...</p>
       </div>
     );
   }
 
-  // Error state
+  // 2. Auth/Error State
+  if (!isAuthenticated) {
+    return <div className="error-container"><h3>Please log in to access clinical data.</h3></div>;
+  }
+
   if (error) {
     return (
       <div className="error-container">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <h3>Error Loading Patient</h3>
+        <h3>Data Access Error</h3>
         <p>{error}</p>
-        <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
-          <button className="btn-primary" onClick={handleRefresh}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Try Again
-          </button>
-          <button className="btn-secondary" onClick={handleBack}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            Back to Patients
-          </button>
-        </div>
+        <button className="btn-primary" onClick={() => fetchPatientData()}>Retry Fetch</button>
+        <button className="btn-secondary" onClick={() => navigate('/patients')}>Return to List</button>
       </div>
     );
   }
 
-  // Patient not found
-  if (!patient) {
-    return (
-      <div className="error-container">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <h3>Patient Not Found</h3>
-        <p>The patient you're looking for doesn't exist or may have been removed.</p>
-        <button className="btn-primary" onClick={handleBack}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          Back to Patients
-        </button>
-      </div>
-    );
-  }
-
+  // 3. Final Content View
+  if (!patient) return null;
   const rhdStatus = getRHDStatusDisplay(patient.rhd_status || 'unknown');
 
   return (
-    <div className="patient-profile-container">
-      {/* Header */}
+    <div className="patient-profile-container fade-in">
+      {/* HEADER SECTION */}
       <div className="profile-header">
         <div className="patient-info">
-          <div className="patient-avatar-large">
-            {patient.name?.charAt(0) || 'P'}
-          </div>
+          <div className="patient-avatar-large">{patient.name?.charAt(0) || 'P'}</div>
           <div className="patient-details">
             <h1>{patient.name || 'Unnamed Patient'}</h1>
             <div className="patient-meta">
@@ -245,385 +158,108 @@ const PatientProfile = () => {
               <span className="divider">|</span>
               <span>{patient.age || '—'} years</span>
               <span className="divider">|</span>
-              <span>{patient.gender || 'Not specified'}</span>
-              <span className="divider">|</span>
-              <span style={{ color: rhdStatus.color, fontWeight: '500' }}>
-                {rhdStatus.label}
-              </span>
+              <span style={{ color: rhdStatus.color, fontWeight: '600' }}>{rhdStatus.label}</span>
             </div>
           </div>
         </div>
         <div className="profile-actions">
-          <button className="btn-secondary" onClick={handleBack}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            Back
-          </button>
-          <button className="btn-secondary" onClick={handleRefresh}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Refresh
-          </button>
-          <button className="btn-primary" onClick={handleNewTriage}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New Triage
-          </button>
-          <button className="btn-primary" onClick={handleNewRecording}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            New Recording
-          </button>
+          <button className="btn-secondary" onClick={() => navigate('/patients')}>Back</button>
+          <button className="btn-primary" onClick={() => navigate(`/patient/${patientId}/triage/new`)}>New Triage</button>
+          <div className="upload-wrapper">
+             <input type="file" id="header-upload" accept=".wav" onChange={handleFileUpload} style={{display:'none'}} />
+             <label htmlFor="header-upload" className="btn-primary">New Recording</label>
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* TABS NAVIGATION */}
       <div className="profile-tabs">
-        <button 
-          className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          Overview
-        </button>
-        <button 
-          className={`tab ${activeTab === 'encounters' ? 'active' : ''}`}
-          onClick={() => setActiveTab('encounters')}
-        >
-          Encounters ({totalEncounters})
-        </button>
-        <button 
-          className={`tab ${activeTab === 'recordings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('recordings')}
-        >
-          Recordings ({totalRecordings})
-        </button>
-        <button 
-          className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analysis')}
-        >
-          Analysis
-        </button>
+        <button className={`tab ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
+        <button className={`tab ${activeTab === 'encounters' ? 'active' : ''}`} onClick={() => setActiveTab('encounters')}>Encounters ({triageRecords.length})</button>
+        <button className={`tab ${activeTab === 'recordings' ? 'active' : ''}`} onClick={() => setActiveTab('recordings')}>History ({recordings.length})</button>
+        <button className={`tab ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>AI Analysis</button>
       </div>
 
-      {/* Tab Content */}
-      {activeTab === 'overview' && (
-        <div>
-          {/* Stats Grid */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-value">{totalEncounters}</span>
-              <span className="stat-label">Total Encounters</span>
+      {/* TAB CONTENT */}
+      <div className="tab-content-area">
+        {activeTab === 'overview' && (
+          <div className="overview-grid">
+            <div className="stats-grid">
+              <div className="stat-card"><h3>{triageRecords.length + recordings.length}</h3><p>Total Encounters</p></div>
+              <div className="stat-card"><h3>{recordings.length}</h3><p>AI Screenings</p></div>
+              <div className="stat-card" style={{borderColor: rhdStatus.color}}><h3 style={{color: rhdStatus.color}}>{rhdStatus.label}</h3><p>Clinical Status</p></div>
             </div>
-            <div className="stat-card">
-              <span className="stat-value">{totalRecordings}</span>
-              <span className="stat-label">RHD Screenings</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-value">{abnormalResults}</span>
-              <span className="stat-label">Abnormal Results</span>
-            </div>
-            <div className="stat-card" style={{ borderColor: rhdStatus.color }}>
-              <span className="stat-value" style={{ color: rhdStatus.color }}>
-                {rhdStatus.label}
-              </span>
-              <span className="stat-label">RHD Status</span>
-            </div>
-          </div>
-
-          {/* Patient Information */}
-          <div className="info-card" style={{ marginBottom: 24 }}>
-            <h3 style={{ margin: '0 0 20px 0', color: '#1a1a2e', fontSize: '1.1rem' }}>
-              Patient Information
-            </h3>
-            <div className="info-grid">
-              <div className="info-item">
-                <span className="label">Full Name</span>
-                <span className="value">{patient.name || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">Age</span>
-                <span className="value">{patient.age || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">Gender</span>
-                <span className="value">{patient.gender || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">Contact</span>
-                <span className="value">{patient.contact || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">Address</span>
-                <span className="value">{patient.address || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">Date of Birth</span>
-                <span className="value">{patient.dob || '—'}</span>
-              </div>
-              <div className="info-item">
-                <span className="label">RHD Status</span>
-                <span className="value" style={{ color: rhdStatus.color, fontWeight: '500' }}>
-                  {rhdStatus.label}
-                </span>
-              </div>
-              <div className="info-item">
-                <span className="label">Doctor ID</span>
-                <span className="value">{patient.doctor_id || '—'}</span>
+            
+            <div className="info-card">
+              <h3>Patient Demographics</h3>
+              <div className="info-grid">
+                <div className="info-item"><span className="label">Gender</span><span className="value">{patient.gender}</span></div>
+                <div className="info-item"><span className="label">Contact</span><span className="value">{patient.contact || 'None'}</span></div>
+                <div className="info-item"><span className="label">Location</span><span className="value">{patient.address || 'Gisozi, Kigali'}</span></div>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Recent Activity */}
-          <div className="recent-activity">
-            <h3>Recent Activity</h3>
-            {totalEncounters === 0 ? (
-              <div className="activity-item">
-                <div className="activity-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                </div>
-                <div className="activity-content">
-                  <span className="activity-title">No recent activity</span>
-                  <span className="activity-date">—</span>
-                </div>
-              </div>
-            ) : (
-              [...triageRecords, ...recordings]
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-                .slice(0, 5)
-                .map((item, index) => (
-                  <div key={index} className="activity-item">
-                    <div className="activity-icon">
-                      {item.triage_color ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                          <path d="M2 17l10 5 10-5"/>
-                          <path d="M2 12l10 5 10-5"/>
-                        </svg>
-                      ) : (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polygon points="5 3 19 12 5 21 5 3"/>
-                        </svg>
-                      )}
-                    </div>
-                    <div className="activity-content">
-                      <span className="activity-title">
-                        {item.triage_color ? 'Triage Assessment' : 'Heart Sound Recording'}
-                      </span>
-                      <span className="activity-date">
-                        {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent'}
-                        {item.triage_color && (
-                          <span className={`triage-badge badge-${item.triage_color.toLowerCase()}`} style={{ marginLeft: 12 }}>
-                            {item.triage_color}
-                          </span>
-                        )}
-                        {item.prediction && (
-                          <span className={`triage-badge ${item.prediction === 'RHD' ? 'badge-red' : 'badge-green'}`} style={{ marginLeft: 12 }}>
-                            {item.prediction}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                ))
+        {activeTab === 'encounters' && (
+          <div className="triage-table">
+            {triageRecords.length === 0 ? <p className="empty-msg">No clinical triage history available.</p> : (
+              <table>
+                <thead><tr><th>Date</th><th>Triage Color</th><th>Notes</th></tr></thead>
+                <tbody>
+                  {triageRecords.map((t, i) => (
+                    <tr key={i}>
+                      <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                      <td><span className={`badge-${t.triage_color?.toLowerCase()}`}>{t.triage_color}</span></td>
+                      <td>{t.notes || 'Routine checkup'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {activeTab === 'encounters' && (
-        <div className="triage-table">
-          <div className="tab-header">
-            <h2>Encounters</h2>
-            <div className="tab-actions">
-              <button className="btn-primary" onClick={handleNewTriage}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                New Triage
-              </button>
-            </div>
-          </div>
-          {triageRecords.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-              <p style={{ marginTop: 16 }}>No encounters recorded yet</p>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {triageRecords.map((triage, index) => (
-                  <tr key={index}>
-                    <td>{triage.created_at ? new Date(triage.created_at).toLocaleDateString() : '—'}</td>
-                    <td>Triage Assessment</td>
-                    <td>
-                      <span className={`triage-badge badge-${triage.triage_color?.toLowerCase() || 'gray'}`}>
-                        {triage.triage_color || 'Pending'}
-                      </span>
-                    </td>
-                    <td>{triage.notes || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'recordings' && (
-        <div>
-          <div className="tab-header">
-            <h2>Heart Sound Recordings</h2>
-            <div className="tab-actions">
-              <button className="btn-primary" onClick={handleNewRecording}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polygon points="5 3 19 12 5 21 5 3"/>
-                </svg>
-                New Recording
-              </button>
-            </div>
-          </div>
-          {recordings.length === 0 ? (
-            <div className="recordings-grid">
-              <div className="recording-card" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                </svg>
-                <p style={{ marginTop: 16 }}>No recordings available</p>
-              </div>
-            </div>
-          ) : (
-            <div className="recordings-grid">
-              {recordings.map((recording, index) => (
-                <div key={index} className="recording-card">
-                  <div className="recording-header">
-                    <h4>Recording #{index + 1}</h4>
-                    <span className={`triage-badge ${recording.prediction === 'RHD' ? 'badge-red' : 'badge-green'}`}>
-                      {recording.prediction || 'Pending'}
-                    </span>
+        {activeTab === 'recordings' && (
+          <div className="recordings-grid">
+            {recordings.length === 0 ? <p className="empty-msg">No heart sound recordings found.</p> : (
+              recordings.map((r, i) => (
+                <div key={i} className="recording-card">
+                  <div className="rec-header">
+                    <strong>{new Date(r.created_at).toLocaleDateString()}</strong>
+                    <span className={r.prediction === 'RHD' ? 'badge-red' : 'badge-green'}>{r.prediction}</span>
                   </div>
-                  <div className="recording-details">
-                    <div className="detail-row">
-                      <span className="detail-label">Date</span>
-                      <span className="detail-value">
-                        {recording.created_at ? new Date(recording.created_at).toLocaleDateString() : '—'}
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-label">Confidence</span>
-                      <span className="detail-value">
-                        {recording.confidence ? `${(recording.confidence * 100).toFixed(1)}%` : '—'}
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-label">File</span>
-                      <span className="detail-value">{recording.file_name || '—'}</span>
-                    </div>
-                  </div>
-                  {recording.file_url && (
-                    <audio controls style={{ width: '100%', marginTop: '12px' }}>
-                      <source src={recording.file_url} type="audio/wav" />
-                      Your browser does not support the audio element.
-                    </audio>
-                  )}
+                  <p>AI Confidence: {(r.confidence * 100).toFixed(1)}%</p>
+                  {r.file_url && <audio controls src={r.file_url} />}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'analysis' && (
-        <div className="analysis-tab">
-          <div className="tab-header">
-            <h2>Heart Sound Analysis</h2>
+              ))
+            )}
           </div>
-          
-          <div className="analysis-container">
-            <div className="upload-section">
-              <h3>Upload Heart Sound for Analysis</h3>
-              <p>Upload a WAV file to analyze for RHD detection</p>
-              
-              <div className="file-upload-wrapper">
-                <input
-                  type="file"
-                  id="heart-sound-file"
-                  accept=".wav,.mp3,.m4a"
-                  onChange={handleFileUpload}
-                  disabled={analyzing}
-                  style={{ display: 'none' }}
-                />
-                <label htmlFor="heart-sound-file" className="upload-btn">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  {analyzing ? 'Analyzing...' : 'Select Audio File'}
-                </label>
-              </div>
+        )}
+
+        {activeTab === 'analysis' && (
+          <div className="analysis-pane">
+            <div className="upload-box">
+              <h3>Live RHD Classification</h3>
+              <p>Upload a 10-second PCG sample from the Saka Stethoscope.</p>
+              <input type="file" accept=".wav" onChange={handleFileUpload} disabled={analyzing} />
+              {analyzing && <div className="analyzing-loader">Processing heart signatures...</div>}
             </div>
 
             {analysisResult && (
-              <div className="analysis-results">
-                <h3>Analysis Results</h3>
-                <div className="result-card">
-                  <div className="result-header">
-                    <span className="result-label">Prediction</span>
-                    <span className={`result-value ${analysisResult.prediction?.prediction === 'RHD' ? 'rhd-positive' : 'rhd-negative'}`}>
-                      {analysisResult.prediction?.prediction || 'Unknown'}
-                    </span>
-                  </div>
-                  <div className="result-header">
-                    <span className="result-label">Confidence</span>
-                    <span className="result-value">
-                      {analysisResult.prediction?.confidence 
-                        ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%` 
-                        : '—'}
-                    </span>
-                  </div>
-                  <div className="result-header">
-                    <span className="result-label">Validation</span>
-                    <span className="result-value">
-                      {analysisResult.validation?.valid ? '✅ Valid' : '❌ Invalid'}
-                    </span>
-                  </div>
-                  <div className="result-header">
-                    <span className="result-label">Analysis Date</span>
-                    <span className="result-value">
-                      {new Date(analysisResult.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                  {analysisResult.prediction?.suggestion && (
-                    <div className="result-suggestion">
-                      <strong>Recommendation:</strong> {analysisResult.prediction.suggestion}
-                    </div>
-                  )}
+              <div className="result-display fade-in">
+                <div className={`result-hero ${analysisResult.prediction.prediction === 'RHD' ? 'danger' : 'safe'}`}>
+                  <h4>Result: {analysisResult.prediction.prediction}</h4>
+                  <h2>{(analysisResult.prediction.confidence * 100).toFixed(1)}% Match</h2>
+                </div>
+                <div className="recommendation">
+                   <strong>Clinical Guidance:</strong> {analysisResult.prediction.prediction === 'RHD' ? 'Immediate referral for Echocardiography required.' : 'No pathological murmurs detected. Resume annual screening.'}
                 </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
