@@ -83,7 +83,7 @@ class DoctorDatabase:
             )
         ''')
         
-        # Heart sound recordings table (for IoT stethoscope)
+        # Heart sound recordings table (ENHANCED with severity and auscultation)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS heart_sound_recordings (
                 id TEXT PRIMARY KEY,
@@ -99,6 +99,10 @@ class DoctorDatabase:
                 prediction TEXT,
                 confidence REAL,
                 probabilities TEXT,
+                severity_grade INTEGER DEFAULT 0,
+                severity_label TEXT,
+                auscultation_point TEXT,
+                auscultation_label TEXT,
                 rhd_risk_score REAL,
                 rhd_recommendation TEXT,
                 recording_date TIMESTAMP,
@@ -139,6 +143,22 @@ class DoctorDatabase:
             )
         ''')
         
+        # Severity tracking table for longitudinal analysis
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS severity_history (
+                id TEXT PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                recording_id TEXT NOT NULL,
+                severity_grade INTEGER NOT NULL,
+                severity_label TEXT NOT NULL,
+                prediction TEXT,
+                confidence REAL,
+                assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients (id),
+                FOREIGN KEY (recording_id) REFERENCES heart_sound_recordings (id)
+            )
+        ''')
+        
         # Add missing columns if they don't exist
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_status TEXT DEFAULT 'unknown'")
@@ -162,6 +182,27 @@ class DoctorDatabase:
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN last_rhd_assessment TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        # Add severity and auscultation columns to heart_sound_recordings
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN severity_grade INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN severity_label TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN auscultation_point TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN auscultation_label TEXT")
         except sqlite3.OperationalError:
             pass
         
@@ -345,6 +386,65 @@ class DoctorDatabase:
             print(f"Error creating patient: {e}")
             return None
     
+    def update_patient(self, patient_id: str, data: Dict) -> bool:
+        """Update patient information"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE patients 
+                SET name = ?,
+                    age = ?,
+                    gender = ?,
+                    date_of_birth = ?,
+                    contact = ?,
+                    address = ?,
+                    emergency_contact = ?,
+                    medical_history = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                data.get('name'),
+                self._safe_int(data.get('age')),
+                data.get('gender'),
+                data.get('date_of_birth'),
+                data.get('contact'),
+                data.get('address'),
+                data.get('emergency_contact'),
+                data.get('medical_history'),
+                patient_id
+            ))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error updating patient: {e}")
+            return False
+    
+    def delete_patient(self, patient_id: str) -> bool:
+        """Delete a patient and all associated records"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Delete associated records first (cascade)
+            cursor.execute("DELETE FROM triage_records WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM heart_sound_recordings WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM severity_history WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM follow_up_reminders WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM patients WHERE id = ?", (patient_id,))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting patient: {e}")
+            return False
+    
     def update_patient_rhd_status(self, patient_id: str, data: Dict) -> bool:
         """Update patient RHD status and related information"""
         try:
@@ -421,6 +521,10 @@ class DoctorDatabase:
         except Exception as e:
             print(f"Error getting patients: {e}")
             return []
+    
+    def get_doctor_patients(self, doctor_id: str) -> List[Dict]:
+        """Alias for get_patients_by_doctor for backward compatibility"""
+        return self.get_patients_by_doctor(doctor_id)
     
     def get_patient_by_id(self, patient_id: str) -> Optional[Dict]:
         """Get a specific patient by ID with RHD status"""
@@ -501,6 +605,42 @@ class DoctorDatabase:
         except Exception as e:
             print(f"Error getting patients by RHD status: {e}")
             return []
+    
+    def get_patient_summary(self, patient_id: str) -> Dict:
+        """Get a comprehensive summary for a patient"""
+        try:
+            patient = self.get_patient_by_id(patient_id)
+            if not patient:
+                return {'error': 'Patient not found'}
+            
+            recordings = self.get_recordings_by_patient(patient_id)
+            triage = self.get_triage_by_patient(patient_id)
+            severity_history = self.get_severity_history(patient_id)
+            reminders = self.get_follow_up_reminders(patient_id)
+            
+            # Calculate summary stats
+            latest_recording = recordings[0] if recordings else None
+            latest_triage = triage[0] if triage else None
+            
+            return {
+                'patient': patient,
+                'latest_recording': latest_recording,
+                'latest_triage': latest_triage,
+                'total_recordings': len(recordings),
+                'total_triage': len(triage),
+                'severity_history': severity_history,
+                'follow_up_reminders': reminders,
+                'summary': {
+                    'has_rhd': patient.get('rhd_status') in ['suspected', 'confirmed'],
+                    'latest_severity': latest_recording.get('severity_grade') if latest_recording else None,
+                    'latest_prediction': latest_recording.get('prediction') if latest_recording else None,
+                    'latest_triage_color': latest_triage.get('triage_color') if latest_triage else None
+                }
+            }
+            
+        except Exception as e:
+            print(f"Error getting patient summary: {e}")
+            return {'error': str(e)}
     
     # ============ TRIAGE METHODS ============
     
@@ -769,10 +909,10 @@ class DoctorDatabase:
             print(f"Error getting triage records: {e}")
             return []
     
-    # ============ HEART SOUND RECORDING METHODS ============
+    # ============ HEART SOUND RECORDING METHODS WITH SEVERITY ============
     
     def save_heart_sound_recording(self, doctor_id: str, data: Dict) -> Optional[str]:
-        """Save a heart sound recording to the database"""
+        """Save a heart sound recording to the database with severity grade"""
         try:
             recording_id = str(uuid.uuid4())[:8]
             conn = self.get_connection()
@@ -785,12 +925,17 @@ class DoctorDatabase:
             file_url = data.get('file_url')
             
             if file_data:
-                # If it's a file object from Flask
                 if hasattr(file_data, 'filename'):
                     file_name = file_data.filename
                 elif isinstance(file_data, str):
                     file_name = file_data
                     file_path = file_data
+            
+            # Get severity grade from data or calculate
+            severity_grade = data.get('severity_grade', 0)
+            severity_label = data.get('severity_label', 'Unknown')
+            auscultation_point = data.get('auscultation_point')
+            auscultation_label = data.get('auscultation_label')
             
             # Handle recording date
             recording_date = data.get('recording_date')
@@ -801,8 +946,9 @@ class DoctorDatabase:
                 INSERT INTO heart_sound_recordings (
                     id, patient_id, doctor_id, file_name, file_path, file_url,
                     prediction, confidence, recording_date, notes,
+                    severity_grade, severity_label, auscultation_point, auscultation_label,
                     recorded_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ''', (
                 recording_id,
                 data.get('patient_id'),
@@ -813,8 +959,17 @@ class DoctorDatabase:
                 data.get('prediction'),
                 data.get('confidence'),
                 recording_date,
-                data.get('notes', '')
+                data.get('notes', ''),
+                severity_grade,
+                severity_label,
+                auscultation_point,
+                auscultation_label
             ))
+            
+            # Save to severity history for longitudinal tracking
+            if severity_grade is not None:
+                self._save_severity_history(conn, data.get('patient_id'), recording_id, severity_grade, severity_label, 
+                                           data.get('prediction'), data.get('confidence'))
             
             conn.commit()
             conn.close()
@@ -826,8 +981,40 @@ class DoctorDatabase:
             traceback.print_exc()
             return None
     
+    def save_recording(self, recording_data: Dict) -> Optional[str]:
+        """Alias for save_heart_sound_recording for backward compatibility"""
+        return self.save_heart_sound_recording(
+            recording_data.get('doctor_id'),
+            recording_data
+        )
+    
+    def _save_severity_history(self, conn, patient_id: str, recording_id: str, 
+                               severity_grade: int, severity_label: str, 
+                               prediction: str, confidence: float):
+        """Save severity grade to history for longitudinal tracking"""
+        try:
+            cursor = conn.cursor()
+            history_id = str(uuid.uuid4())[:8]
+            
+            cursor.execute('''
+                INSERT INTO severity_history (
+                    id, patient_id, recording_id, severity_grade, severity_label,
+                    prediction, confidence, assessed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (
+                history_id,
+                patient_id,
+                recording_id,
+                severity_grade,
+                severity_label,
+                prediction,
+                confidence
+            ))
+        except Exception as e:
+            print(f"⚠️ Error saving severity history: {e}")
+    
     def get_recordings_by_patient(self, patient_id: str) -> List[Dict]:
-        """Get all recordings for a patient"""
+        """Get all recordings for a patient with severity info"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
@@ -850,7 +1037,11 @@ class DoctorDatabase:
                     recording_date, 
                     notes,
                     recorded_at,
-                    analyzed_at
+                    analyzed_at,
+                    severity_grade,
+                    severity_label,
+                    auscultation_point,
+                    auscultation_label
                 FROM heart_sound_recordings
                 WHERE patient_id = ?
                 ORDER BY recorded_at DESC, recording_date DESC
@@ -874,13 +1065,12 @@ class DoctorDatabase:
                     'recording_date': row[8],
                     'notes': row[9],
                     'created_at': row[10] if len(row) > 10 else None,
-                    'updated_at': row[11] if len(row) > 11 else None
+                    'updated_at': row[11] if len(row) > 11 else None,
+                    'severity_grade': row[12] if len(row) > 12 else 0,
+                    'severity_label': row[13] if len(row) > 13 else 'Unknown',
+                    'auscultation_point': row[14] if len(row) > 14 else None,
+                    'auscultation_label': row[15] if len(row) > 15 else None
                 }
-                
-                # Clean up None values for JSON
-                for key, value in recording.items():
-                    if value is None:
-                        recording[key] = None
                 
                 recordings.append(recording)
             
@@ -891,6 +1081,155 @@ class DoctorDatabase:
             import traceback
             traceback.print_exc()
             return []
+    
+    def get_patient_recordings(self, patient_id: str) -> List[Dict]:
+        """Alias for get_recordings_by_patient for backward compatibility"""
+        return self.get_recordings_by_patient(patient_id)
+    
+    def get_severity_history(self, patient_id: str, limit: int = 20) -> List[Dict]:
+        """Get severity grade history for a patient"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT 
+                    id, patient_id, recording_id, severity_grade, severity_label,
+                    prediction, confidence, assessed_at
+                FROM severity_history
+                WHERE patient_id = ?
+                ORDER BY assessed_at DESC
+                LIMIT ?
+            ''', (patient_id, limit))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            history = []
+            for row in rows:
+                history.append({
+                    'id': row[0],
+                    'patient_id': row[1],
+                    'recording_id': row[2],
+                    'severity_grade': row[3],
+                    'severity_label': row[4],
+                    'prediction': row[5],
+                    'confidence': row[6],
+                    'assessed_at': row[7]
+                })
+            
+            return history
+            
+        except Exception as e:
+            print(f"❌ Error fetching severity history: {e}")
+            return []
+    
+    def get_severity_trend(self, patient_id: str) -> Dict:
+        """Get severity trend analysis for a patient"""
+        try:
+            history = self.get_severity_history(patient_id, 50)
+            
+            if not history:
+                return {
+                    'trend': 'No data',
+                    'current_grade': 0,
+                    'previous_grade': 0,
+                    'change': 0,
+                    'direction': 'stable',
+                    'history': []
+                }
+            
+            # Calculate trend
+            grades = [h['severity_grade'] for h in history]
+            current_grade = grades[0] if grades else 0
+            previous_grade = grades[1] if len(grades) > 1 else current_grade
+            
+            # Determine direction
+            if current_grade > previous_grade:
+                direction = 'worsening'
+            elif current_grade < previous_grade:
+                direction = 'improving'
+            else:
+                direction = 'stable'
+            
+            # Calculate rate of change
+            change = current_grade - previous_grade
+            
+            # Determine trend description
+            if direction == 'stable' and current_grade == 0:
+                trend = 'Normal - Continue routine monitoring'
+            elif direction == 'stable' and current_grade == 1:
+                trend = 'Mild - Continue regular monitoring'
+            elif direction == 'stable' and current_grade == 2:
+                trend = 'Moderate - Consider specialist referral'
+            elif direction == 'worsening':
+                trend = f'⚠️ Worsening - Grade increased by {change} level(s)'
+            elif direction == 'improving':
+                trend = f'✅ Improving - Grade decreased by {abs(change)} level(s)'
+            else:
+                trend = 'Monitor closely'
+            
+            return {
+                'trend': trend,
+                'current_grade': current_grade,
+                'previous_grade': previous_grade,
+                'change': change,
+                'direction': direction,
+                'history': history
+            }
+            
+        except Exception as e:
+            print(f"❌ Error calculating severity trend: {e}")
+            return {
+                'trend': 'Error calculating trend',
+                'current_grade': 0,
+                'previous_grade': 0,
+                'change': 0,
+                'direction': 'unknown',
+                'history': []
+            }
+    
+    def get_severity_stats(self, doctor_id: str) -> Dict:
+        """Get severity statistics for a doctor's patients"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Get severity breakdown
+            cursor.execute('''
+                SELECT 
+                    severity_grade,
+                    severity_label,
+                    COUNT(*) as count
+                FROM heart_sound_recordings r
+                JOIN patients p ON r.patient_id = p.id
+                WHERE p.doctor_id = ?
+                GROUP BY severity_grade, severity_label
+                ORDER BY severity_grade
+            ''', (doctor_id,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            stats = {
+                'total_recordings': 0,
+                'grade_0': {'count': 0, 'label': 'Normal'},
+                'grade_1': {'count': 0, 'label': 'Monitor'},
+                'grade_2': {'count': 0, 'label': 'Definite RHD'}
+            }
+            
+            for row in rows:
+                grade = row[0]
+                count = row[2]
+                stats['total_recordings'] += count
+                if grade in [0, 1, 2]:
+                    stats[f'grade_{grade}']['count'] = count
+            
+            return stats
+            
+        except Exception as e:
+            print(f"Error getting severity stats: {e}")
+            return {'total_recordings': 0}
     
     # ============ IOT DEVICE METHODS ============
     
@@ -976,6 +1315,110 @@ class DoctorDatabase:
             print(f"Error getting devices: {e}")
             return []
     
+    def get_device_by_id(self, device_id: str) -> Optional[Dict]:
+        """Get a specific IoT device by ID"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT * FROM iot_devices WHERE id = ?', (device_id,))
+            row = cursor.fetchone()
+            
+            conn.close()
+            
+            if row:
+                return {
+                    'id': row[0],
+                    'doctor_id': row[1],
+                    'device_name': row[2],
+                    'device_type': row[3],
+                    'ip_address': row[4],
+                    'mac_address': row[5],
+                    'status': row[6],
+                    'last_connected': row[7],
+                    'created_at': row[8]
+                }
+            return None
+            
+        except Exception as e:
+            print(f"Error getting device: {e}")
+            return None
+    
+    # ============ FOLLOW-UP REMINDER METHODS ============
+    
+    def save_follow_up_reminder(self, patient_id: str, days: int, reason: str) -> bool:
+        """Save a follow-up reminder for a patient"""
+        try:
+            reminder_id = str(uuid.uuid4())[:8]
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO follow_up_reminders (
+                    id, patient_id, recommended_days, reason, created_at
+                ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (reminder_id, patient_id, days, reason))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error saving follow-up reminder: {e}")
+            return False
+    
+    def get_follow_up_reminders(self, patient_id: str) -> List[Dict]:
+        """Get follow-up reminders for a patient"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM follow_up_reminders 
+                WHERE patient_id = ? AND completed = 0
+                ORDER BY created_at DESC
+            ''', (patient_id,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            reminders = []
+            for row in rows:
+                reminders.append({
+                    'id': row[0],
+                    'patient_id': row[1],
+                    'recommended_days': row[2],
+                    'reason': row[3],
+                    'completed': row[4],
+                    'created_at': row[5]
+                })
+            
+            return reminders
+            
+        except Exception as e:
+            print(f"Error getting follow-up reminders: {e}")
+            return []
+    
+    def complete_follow_up(self, reminder_id: str) -> bool:
+        """Mark a follow-up reminder as completed"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE follow_up_reminders 
+                SET completed = 1 
+                WHERE id = ?
+            ''', (reminder_id,))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error completing follow-up: {e}")
+            return False
+    
     # ============ RHD STATS & AUTOMATION METHODS ============
     
     def update_patient_rhd_from_prediction(self, patient_id: str, prediction: str, confidence: float) -> bool:
@@ -1034,7 +1477,7 @@ class DoctorDatabase:
     
     def get_rhd_stats(self, doctor_id: str) -> Dict:
         """
-        Get RHD statistics for dashboard
+        Get RHD statistics for dashboard with severity breakdown
         """
         try:
             conn = self.get_connection()
@@ -1053,6 +1496,20 @@ class DoctorDatabase:
             ''', (doctor_id,))
             rhd_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
             
+            # Severity breakdown from recordings
+            cursor.execute('''
+                SELECT severity_grade, severity_label, COUNT(*) 
+                FROM heart_sound_recordings 
+                WHERE doctor_id = ? 
+                GROUP BY severity_grade, severity_label
+            ''', (doctor_id,))
+            severity_breakdown = {}
+            for row in cursor.fetchall():
+                severity_breakdown[row[0]] = {
+                    'label': row[1],
+                    'count': row[2]
+                }
+            
             # Age distribution of RHD cases
             cursor.execute('''
                 SELECT 
@@ -1070,12 +1527,13 @@ class DoctorDatabase:
             ''', (doctor_id,))
             age_distribution = {row[0]: row[1] for row in cursor.fetchall()}
             
-            # Recent RHD cases
+            # Recent RHD cases with severity
             cursor.execute('''
                 SELECT p.name, p.age, p.rhd_status, p.last_rhd_assessment,
-                       t.triage_color
+                       t.triage_color, r.severity_grade, r.severity_label
                 FROM patients p
                 LEFT JOIN triage_records t ON p.id = t.patient_id
+                LEFT JOIN heart_sound_recordings r ON p.id = r.patient_id
                 WHERE p.doctor_id = ? AND p.rhd_status IN ('suspected', 'confirmed')
                 ORDER BY p.last_rhd_assessment DESC
                 LIMIT 10
@@ -1087,7 +1545,9 @@ class DoctorDatabase:
                     'age': row[1],
                     'status': row[2],
                     'assessment_date': row[3],
-                    'triage_color': row[4]
+                    'triage_color': row[4],
+                    'severity_grade': row[5] if len(row) > 5 else None,
+                    'severity_label': row[6] if len(row) > 6 else None
                 })
             
             conn.close()
@@ -1099,6 +1559,7 @@ class DoctorDatabase:
                 'rhd_none': rhd_breakdown.get('none', 0),
                 'rhd_unknown': rhd_breakdown.get('unknown', 0),
                 'rhd_prevalence': ((rhd_breakdown.get('suspected', 0) + rhd_breakdown.get('confirmed', 0)) / total_patients * 100) if total_patients > 0 else 0,
+                'severity_breakdown': severity_breakdown,
                 'age_distribution': age_distribution,
                 'recent_cases': recent_cases
             }

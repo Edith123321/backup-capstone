@@ -5,6 +5,72 @@ import { useAuth } from '../../context/AuthContext';
 import { patientService, screeningService, databaseApi } from '../../services/api';
 import './RecordingView.css';
 
+// ============================================
+// AUSCULTATION POINT OPTIONS
+// ============================================
+const AUSCULTATION_POINTS = {
+  MV: { 
+    id: 'MV', 
+    label: 'Mitral Valve (MV)', 
+    description: 'Apex / 5th intercostal space',
+    icon: '🫀',
+    color: '#3b82f6'
+  },
+  AV: { 
+    id: 'AV', 
+    label: 'Aortic Valve (AV)', 
+    description: 'Right upper sternal border',
+    icon: '❤️',
+    color: '#ef4444'
+  },
+  PV: { 
+    id: 'PV', 
+    label: 'Pulmonary Valve (PV)', 
+    description: 'Left upper sternal border',
+    icon: '💙',
+    color: '#8b5cf6'
+  },
+  TV: { 
+    id: 'TV', 
+    label: 'Tricuspid Valve (TV)', 
+    description: 'Left lower sternal border',
+    icon: '💚',
+    color: '#22c55e'
+  }
+};
+
+// ============================================
+// SEVERITY GRADE HELPER
+// ============================================
+const getSeverityGrade = (prediction, confidence) => {
+  if (!prediction || prediction === 'Unknown' || prediction === 'Pending') {
+    return { grade: 'N/A', label: 'Pending', color: '#94a3b8', bg: '#f1f5f9' };
+  }
+  
+  if (prediction === 'Normal') {
+    if (confidence > 0.8) {
+      return { grade: '0', label: 'Normal', color: '#22c55e', bg: '#dcfce7' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  if (prediction === 'RHD') {
+    if (confidence > 0.8) {
+      return { grade: '2', label: 'Definite RHD', color: '#dc2626', bg: '#fee2e2' };
+    } else if (confidence > 0.6) {
+      return { grade: '2', label: 'Possible RHD', color: '#ea580c', bg: '#ffedd5' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  return { grade: 'N/A', label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' };
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 const RecordingView = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
@@ -20,6 +86,8 @@ const RecordingView = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [selectedPoint, setSelectedPoint] = useState('MV');
+  const [showAnatomicalMap, setShowAnatomicalMap] = useState(false);
 
   // Fetch patient and recordings data
   const fetchData = useCallback(async () => {
@@ -87,13 +155,16 @@ const RecordingView = () => {
         });
       }, 300);
 
-      // Analyze the heart sound
-      const result = await screeningService.predict(file);
+      // Get the selected auscultation point
+      const auscultationPoint = AUSCULTATION_POINTS[selectedPoint];
+      
+      // Analyze the heart sound with auscultation point
+      const result = await screeningService.predict(file, patientId, user?.doctor_id || user?.id);
       
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      // Save recording to database
+      // Save recording to database with auscultation point
       if (result.success || result.prediction) {
         const recordingData = {
           patient_id: patientId,
@@ -102,7 +173,9 @@ const RecordingView = () => {
           prediction: result.prediction || result.class || 'Unknown',
           confidence: result.confidence || 0,
           recording_date: new Date().toISOString(),
-          notes: `Uploaded and analyzed on ${new Date().toLocaleString()}`
+          auscultation_point: selectedPoint,
+          auscultation_label: auscultationPoint.label,
+          notes: `Uploaded and analyzed on ${new Date().toLocaleString()} - ${auscultationPoint.label}`
         };
 
         // Save via database API
@@ -113,13 +186,18 @@ const RecordingView = () => {
           await fetchData();
         }
 
+        const severity = getSeverityGrade(result.prediction || result.class, result.confidence);
+        
         setAnalysisResult({
           prediction: result.prediction || result.class || 'Unknown',
           confidence: result.confidence || 0,
           prob_normal: result.prob_normal || 0,
           prob_rhd: result.prob_rhd || 0,
           timestamp: new Date().toISOString(),
-          file_name: file.name
+          file_name: file.name,
+          auscultation_point: selectedPoint,
+          auscultation_label: auscultationPoint.label,
+          severity: severity
         });
       }
 
@@ -139,17 +217,20 @@ const RecordingView = () => {
     setSelectedRecording(selectedRecording?.id === recording.id ? null : recording);
   };
 
-  // Format duration
-  const formatDuration = (seconds) => {
-    if (!seconds) return '--:--';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  // Get auscultation point display
+  const getAuscultationDisplay = (pointId) => {
+    const point = AUSCULTATION_POINTS[pointId];
+    if (!point) return null;
+    return (
+      <span className="auscultation-badge" style={{ backgroundColor: point.color + '20', color: point.color }}>
+        {point.icon} {point.label}
+      </span>
+    );
   };
 
   // Get prediction badge class
   const getPredictionBadge = (prediction) => {
-    if (!prediction || prediction === 'Unknown') return 'badge-gray';
+    if (!prediction || prediction === 'Unknown' || prediction === 'Pending') return 'badge-gray';
     return prediction === 'RHD' ? 'badge-red' : 'badge-green';
   };
 
@@ -162,6 +243,16 @@ const RecordingView = () => {
       'unknown': { label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' }
     };
     return statusMap[status] || statusMap.unknown;
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return '—';
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch {
+      return '—';
+    }
   };
 
   // Loading state
@@ -192,6 +283,12 @@ const RecordingView = () => {
   }
 
   const rhdStatus = patient ? getRHDStatusDisplay(patient.rhd_status || 'unknown') : null;
+
+  // Calculate stats
+  const totalRecordings = recordings.length;
+  const rhdDetected = recordings.filter(r => r.prediction === 'RHD').length;
+  const normalRecordings = recordings.filter(r => r.prediction === 'Normal').length;
+  const pendingRecordings = recordings.filter(r => !r.prediction || r.prediction === 'Unknown' || r.prediction === 'Pending').length;
 
   return (
     <div className="recording-view-container">
@@ -243,26 +340,57 @@ const RecordingView = () => {
       {/* Stats Summary */}
       <div className="stats-summary">
         <div className="stat-item">
-          <span className="stat-number">{recordings.length}</span>
+          <span className="stat-number">{totalRecordings}</span>
           <span className="stat-label">Total Recordings</span>
         </div>
         <div className="stat-item">
-          <span className="stat-number">
-            {recordings.filter(r => r.prediction === 'RHD').length}
-          </span>
+          <span className="stat-number">{rhdDetected}</span>
           <span className="stat-label">RHD Detected</span>
         </div>
         <div className="stat-item">
-          <span className="stat-number">
-            {recordings.filter(r => r.prediction === 'Normal').length}
-          </span>
+          <span className="stat-number">{normalRecordings}</span>
           <span className="stat-label">Normal</span>
         </div>
         <div className="stat-item">
-          <span className="stat-number">
-            {recordings.filter(r => !r.prediction || r.prediction === 'Unknown').length}
-          </span>
+          <span className="stat-number">{pendingRecordings}</span>
           <span className="stat-label">Pending Analysis</span>
+        </div>
+      </div>
+
+      {/* Auscultation Point Filter */}
+      <div className="filter-section">
+        <div className="filter-label">Filter by Auscultation Point:</div>
+        <div className="filter-buttons">
+          <button 
+            className={`filter-btn ${selectedPoint === 'MV' ? 'active' : ''}`}
+            onClick={() => setSelectedPoint('MV')}
+          >
+            <span style={{ color: AUSCULTATION_POINTS.MV.color }}>🫀</span> MV
+          </button>
+          <button 
+            className={`filter-btn ${selectedPoint === 'AV' ? 'active' : ''}`}
+            onClick={() => setSelectedPoint('AV')}
+          >
+            <span style={{ color: AUSCULTATION_POINTS.AV.color }}>❤️</span> AV
+          </button>
+          <button 
+            className={`filter-btn ${selectedPoint === 'PV' ? 'active' : ''}`}
+            onClick={() => setSelectedPoint('PV')}
+          >
+            <span style={{ color: AUSCULTATION_POINTS.PV.color }}>💙</span> PV
+          </button>
+          <button 
+            className={`filter-btn ${selectedPoint === 'TV' ? 'active' : ''}`}
+            onClick={() => setSelectedPoint('TV')}
+          >
+            <span style={{ color: AUSCULTATION_POINTS.TV.color }}>💚</span> TV
+          </button>
+          <button 
+            className={`filter-btn ${selectedPoint === 'all' ? 'active' : ''}`}
+            onClick={() => setSelectedPoint('all')}
+          >
+            All
+          </button>
         </div>
       </div>
 
@@ -282,113 +410,157 @@ const RecordingView = () => {
           </div>
         ) : (
           <div className="recordings-grid">
-            {recordings.map((recording) => (
-              <div 
-                key={recording.id} 
-                className={`recording-card ${selectedRecording?.id === recording.id ? 'expanded' : ''}`}
-                onClick={() => handleSelectRecording(recording)}
-              >
-                <div className="recording-card-header">
-                  <div className="recording-info">
-                    <div className="recording-icon">🎵</div>
-                    <div>
-                      <h4>{recording.file_name || `Recording ${recording.id?.slice(0, 6)}`}</h4>
-                      <span className="recording-date">
-                        {recording.recording_date 
-                          ? new Date(recording.recording_date).toLocaleString()
-                          : recording.created_at 
-                            ? new Date(recording.created_at).toLocaleString()
-                            : 'Date unknown'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="recording-status">
-                    <span className={`triage-badge ${getPredictionBadge(recording.prediction)}`}>
-                      {recording.prediction || 'Pending'}
-                    </span>
-                    {recording.confidence && (
-                      <span className="confidence-badge">
-                        {`${(recording.confidence * 100).toFixed(1)}%`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {selectedRecording?.id === recording.id && (
-                  <div className="recording-details-expanded">
-                    <div className="detail-grid">
-                      <div className="detail-item">
-                        <span className="detail-label">File Name</span>
-                        <span className="detail-value">{recording.file_name || '—'}</span>
+            {recordings
+              .filter(r => selectedPoint === 'all' || r.auscultation_point === selectedPoint)
+              .map((recording) => {
+                const severity = getSeverityGrade(recording.prediction, recording.confidence);
+                return (
+                  <div 
+                    key={recording.id} 
+                    className={`recording-card ${selectedRecording?.id === recording.id ? 'expanded' : ''}`}
+                    onClick={() => handleSelectRecording(recording)}
+                  >
+                    <div className="recording-card-header">
+                      <div className="recording-info">
+                        <div className="recording-icon">🎵</div>
+                        <div>
+                          <h4>{recording.file_name || `Recording ${recording.id?.slice(0, 6)}`}</h4>
+                          <span className="recording-date">
+                            {formatDate(recording.recording_date || recording.created_at)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Prediction</span>
-                        <span className={`detail-value ${recording.prediction === 'RHD' ? 'rhd-positive' : 'rhd-negative'}`}>
+                      <div className="recording-status">
+                        <span className={`triage-badge ${getPredictionBadge(recording.prediction)}`}>
                           {recording.prediction || 'Pending'}
                         </span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Confidence</span>
-                        <span className="detail-value">
-                          {recording.confidence ? `${(recording.confidence * 100).toFixed(1)}%` : '—'}
-                        </span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Date Recorded</span>
-                        <span className="detail-value">
-                          {recording.recording_date 
-                            ? new Date(recording.recording_date).toLocaleString()
-                            : '—'}
-                        </span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Notes</span>
-                        <span className="detail-value">{recording.notes || '—'}</span>
-                      </div>
-                      <div className="detail-item">
-                        <span className="detail-label">Recorded At</span>
-                        <span className="detail-value">
-                          {recording.created_at 
-                            ? new Date(recording.created_at).toLocaleString()
-                            : '—'}
-                        </span>
+                        {recording.confidence && (
+                          <span className="confidence-badge">
+                            {`${(recording.confidence * 100).toFixed(1)}%`}
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    {recording.file_url && (
-                      <div className="audio-player-wrapper">
-                        <audio controls className="audio-player">
-                          <source src={recording.file_url} type="audio/wav" />
-                          Your browser does not support the audio element.
-                        </audio>
-                      </div>
-                    )}
-
-                    <div className="recording-actions">
-                      {recording.file_url && (
-                        <a 
-                          href={recording.file_url} 
-                          download={recording.file_name || 'recording.wav'}
-                          className="btn-secondary"
+                    <div className="recording-meta">
+                      {recording.auscultation_point && (
+                        <span className="auscultation-badge" style={{ 
+                          backgroundColor: AUSCULTATION_POINTS[recording.auscultation_point]?.color + '20',
+                          color: AUSCULTATION_POINTS[recording.auscultation_point]?.color
+                        }}>
+                          {AUSCULTATION_POINTS[recording.auscultation_point]?.icon} 
+                          {AUSCULTATION_POINTS[recording.auscultation_point]?.label || recording.auscultation_point}
+                        </span>
+                      )}
+                      {recording.prediction && recording.prediction !== 'Pending' && (
+                        <span 
+                          className="severity-badge-small"
+                          style={{ 
+                            backgroundColor: severity.bg,
+                            color: severity.color
+                          }}
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                          </svg>
-                          Download
-                        </a>
+                          Grade {severity.grade}: {severity.label}
+                        </span>
                       )}
                     </div>
+
+                    {selectedRecording?.id === recording.id && (
+                      <div className="recording-details-expanded">
+                        <div className="detail-grid">
+                          <div className="detail-item">
+                            <span className="detail-label">File Name</span>
+                            <span className="detail-value">{recording.file_name || '—'}</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Prediction</span>
+                            <span className={`detail-value ${recording.prediction === 'RHD' ? 'rhd-positive' : 'rhd-negative'}`}>
+                              {recording.prediction || 'Pending'}
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Confidence</span>
+                            <span className="detail-value">
+                              {recording.confidence ? `${(recording.confidence * 100).toFixed(1)}%` : '—'}
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Severity Grade</span>
+                            <span className="detail-value" style={{ color: severity.color }}>
+                              {severity.label}
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Auscultation Point</span>
+                            <span className="detail-value">
+                              {recording.auscultation_point ? 
+                                AUSCULTATION_POINTS[recording.auscultation_point]?.label || recording.auscultation_point 
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Date Recorded</span>
+                            <span className="detail-value">
+                              {formatDate(recording.recording_date || recording.created_at)}
+                            </span>
+                          </div>
+                          {recording.notes && (
+                            <div className="detail-item full-width">
+                              <span className="detail-label">Notes</span>
+                              <span className="detail-value">{recording.notes}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {recording.file_url && (
+                          <div className="audio-player-wrapper">
+                            <audio controls className="audio-player">
+                              <source src={recording.file_url} type="audio/wav" />
+                              Your browser does not support the audio element.
+                            </audio>
+                          </div>
+                        )}
+
+                        <div className="recording-actions">
+                          {recording.file_url && (
+                            <a 
+                              href={recording.file_url} 
+                              download={recording.file_name || 'recording.wav'}
+                              className="btn-secondary"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                              </svg>
+                              Download
+                            </a>
+                          )}
+                          <button 
+                            className="btn-secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Navigate to analysis
+                              navigate(`/patient/${patientId}/analysis/${recording.id}`);
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            View Analysis
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              })}
           </div>
         )}
       </div>
 
-      {/* Upload Modal */}
+      {/* Upload Modal with Auscultation Point Selection */}
       {showUploadModal && (
         <div className="modal-overlay" onClick={() => !uploading && setShowUploadModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -405,6 +577,28 @@ const RecordingView = () => {
             <div className="modal-body">
               <p>Upload a PCG (Phonocardiogram) recording for AI-powered RHD detection.</p>
               
+              {/* Auscultation Point Selection */}
+              <div className="auscultation-selector">
+                <label className="selector-label">Auscultation Point:</label>
+                <div className="selector-options">
+                  {Object.values(AUSCULTATION_POINTS).map((point) => (
+                    <button
+                      key={point.id}
+                      className={`selector-btn ${selectedPoint === point.id ? 'active' : ''}`}
+                      onClick={() => setSelectedPoint(point.id)}
+                      style={{
+                        borderColor: selectedPoint === point.id ? point.color : '#e2e8f0',
+                        backgroundColor: selectedPoint === point.id ? point.color + '20' : 'transparent'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.2rem' }}>{point.icon}</span>
+                      <span>{point.id}</span>
+                      <span className="selector-label-small">{point.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
               {uploading ? (
                 <div className="upload-progress">
                   <div className="progress-bar">
@@ -420,6 +614,9 @@ const RecordingView = () => {
                   <div className="upload-icon">📤</div>
                   <p>Click to select an audio file</p>
                   <p className="upload-hint">Supports WAV, MP3, M4A formats</p>
+                  <p className="upload-hint" style={{ color: '#3b82f6', fontWeight: '500' }}>
+                    Selected: {AUSCULTATION_POINTS[selectedPoint]?.label || 'None'}
+                  </p>
                   <input
                     type="file"
                     accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
@@ -443,6 +640,12 @@ const RecordingView = () => {
               <span className="notification-confidence">
                 ({`${(analysisResult.confidence * 100).toFixed(1)}% confidence`})
               </span>
+            </p>
+            <p>
+              <strong>Severity:</strong> Grade {analysisResult.severity.grade} - {analysisResult.severity.label}
+            </p>
+            <p>
+              <strong>Auscultation:</strong> {analysisResult.auscultation_label}
             </p>
             <p className="notification-file">{analysisResult.file_name}</p>
             <button 
