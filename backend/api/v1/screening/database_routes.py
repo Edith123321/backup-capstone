@@ -1,3 +1,5 @@
+# database_routes.py - Add OPTIONS handling for all routes
+
 from flask import Blueprint, request, jsonify, make_response
 import os
 import sys
@@ -12,10 +14,25 @@ database_bp = Blueprint('database', __name__)
 # CORS HELPER FUNCTIONS
 # ===========================
 
+# List of allowed origins
+ALLOWED_ORIGINS = [
+    'https://backup-capstone-mbq6.onrender.com',
+    'http://localhost:3000',
+    'http://localhost:5173'
+]
+
+def get_allowed_origin():
+    """Get the appropriate allowed origin based on request"""
+    origin = request.headers.get('Origin', '')
+    if origin in ALLOWED_ORIGINS:
+        return origin
+    return ALLOWED_ORIGINS[0]  # Default to first allowed origin
+
 def create_cors_response(data, status=200):
     """Create a response with proper CORS headers"""
     response = make_response(jsonify(data), status)
-    response.headers['Access-Control-Allow-Origin'] = 'https://backup-capstone-mbq6.onrender.com'
+    origin = get_allowed_origin()
+    response.headers['Access-Control-Allow-Origin'] = origin
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
     response.headers['Access-Control-Allow-Credentials'] = 'true'
@@ -25,7 +42,8 @@ def create_cors_response(data, status=200):
 def handle_options():
     """Handle OPTIONS preflight requests"""
     response = make_response('', 200)
-    response.headers['Access-Control-Allow-Origin'] = 'https://backup-capstone-mbq6.onrender.com'
+    origin = get_allowed_origin()
+    response.headers['Access-Control-Allow-Origin'] = origin
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
     response.headers['Access-Control-Allow-Credentials'] = 'true'
@@ -58,29 +76,6 @@ def get_patients():
         return create_cors_response({'error': str(e)}, 500)
 
 
-@database_bp.route('/patients', methods=['POST', 'OPTIONS'])
-def create_patient():
-    if request.method == 'OPTIONS':
-        return handle_options()
-    
-    try:
-        data = request.json
-        doctor_id = data.get('doctor_id')
-
-        if not doctor_id:
-            return create_cors_response({'error': 'doctor_id required'}, 400)
-
-        patient_id = db.create_patient(doctor_id, data)
-
-        if patient_id:
-            return create_cors_response({'success': True, 'patient_id': patient_id})
-
-        return create_cors_response({'error': 'Failed to create patient'}, 500)
-
-    except Exception as e:
-        return create_cors_response({'error': str(e)}, 500)
-
-
 @database_bp.route('/patients/<patient_id>', methods=['GET', 'OPTIONS'])
 def get_patient(patient_id):
     if request.method == 'OPTIONS':
@@ -94,6 +89,85 @@ def get_patient(patient_id):
 
         return create_cors_response({'error': 'Patient not found'}, 404)
 
+    except Exception as e:
+        return create_cors_response({'error': str(e)}, 500)
+
+
+@database_bp.route('/patients/<patient_id>/rhd-status', methods=['PUT', 'OPTIONS'])
+def update_patient_rhd_status(patient_id):
+    if request.method == 'OPTIONS':
+        return handle_options()
+    
+    try:
+        data = request.json
+        success = db.update_patient_rhd_status(patient_id, data)
+        
+        if success:
+            return create_cors_response({
+                'success': True,
+                'message': 'RHD status updated successfully'
+            })
+        
+        return create_cors_response({'error': 'Failed to update RHD status'}, 500)
+        
+    except Exception as e:
+        return create_cors_response({'error': str(e)}, 500)
+
+
+@database_bp.route('/patients/rhd-status/<rhd_status>', methods=['GET', 'OPTIONS'])
+def get_patients_by_rhd_status(rhd_status):
+    if request.method == 'OPTIONS':
+        return handle_options()
+    
+    try:
+        doctor_id = request.args.get('doctor_id')
+        
+        if not doctor_id:
+            return create_cors_response({'error': 'doctor_id required'}, 400)
+        
+        patients = db.get_patients_by_rhd_status(doctor_id, rhd_status)
+        
+        return create_cors_response({
+            'success': True,
+            'patients': patients
+        })
+        
+    except Exception as e:
+        return create_cors_response({'error': str(e)}, 500)
+
+
+@database_bp.route('/patients/rhd-summary', methods=['GET', 'OPTIONS'])
+def get_rhd_summary():
+    if request.method == 'OPTIONS':
+        return handle_options()
+    
+    try:
+        doctor_id = request.args.get('doctor_id')
+        
+        if not doctor_id:
+            return create_cors_response({'error': 'doctor_id required'}, 400)
+        
+        patients = db.get_patients_by_doctor(doctor_id)
+        
+        summary = {
+            'total': len(patients),
+            'confirmed': 0,
+            'suspected': 0,
+            'none': 0,
+            'unknown': 0,
+            'patients': patients
+        }
+        
+        for patient in patients:
+            status = patient.get('rhd_status', 'unknown')
+            if status in summary:
+                summary[status] += 1
+        
+        return create_cors_response({
+            'success': True,
+            'summary': summary
+        })
+        
     except Exception as e:
         return create_cors_response({'error': str(e)}, 500)
 
@@ -153,6 +227,30 @@ def get_triage_by_patient(patient_id):
         return create_cors_response({
             'success': True,
             'triage': triage_records
+        })
+
+    except Exception as e:
+        return create_cors_response({'error': str(e)}, 500)
+
+
+@database_bp.route('/triage/calculate', methods=['POST', 'OPTIONS'])
+def calculate_triage():
+    if request.method == 'OPTIONS':
+        return handle_options()
+    
+    try:
+        data = request.json
+
+        if not data:
+            return create_cors_response({'error': 'No data provided'}, 400)
+
+        triage_level, triage_color, triage_score = db.calculate_jones_triage(data)
+
+        return create_cors_response({
+            'success': True,
+            'triage_level': triage_level,
+            'triage_color': triage_color,
+            'triage_score': triage_score
         })
 
     except Exception as e:
@@ -291,137 +389,3 @@ def update_device_status(device_id):
 
     except Exception as e:
         return create_cors_response({'error': str(e)}, 500)
-
-
-# =======================
-# TRIAGE CALCULATOR
-# =======================
-
-@database_bp.route('/triage/calculate', methods=['POST', 'OPTIONS'])
-def calculate_triage():
-    if request.method == 'OPTIONS':
-        return handle_options()
-    
-    try:
-        data = request.json
-
-        if not data:
-            return create_cors_response({'error': 'No data provided'}, 400)
-
-        triage_level, triage_color, triage_score = db.calculate_jones_triage(data)
-
-        return create_cors_response({
-            'success': True,
-            'triage_level': triage_level,
-            'triage_color': triage_color,
-            'triage_score': triage_score
-        })
-
-    except Exception as e:
-        return create_cors_response({'error': str(e)}, 500)
-# Add these routes to database_routes.py
-
-# =======================
-# RHD STATUS ROUTES
-# =======================
-
-@database_bp.route('/patients/<patient_id>/rhd-status', methods=['PUT'])
-def update_patient_rhd_status(patient_id):
-    """Update a patient's RHD status"""
-    try:
-        data = request.json
-        success = db.update_patient_rhd_status(patient_id, data)
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': 'RHD status updated successfully'
-            })
-        
-        return jsonify({'error': 'Failed to update RHD status'}), 500
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@database_bp.route('/patients/rhd-status/<rhd_status>', methods=['GET'])
-def get_patients_by_rhd_status(rhd_status):
-    """Get patients filtered by RHD status"""
-    try:
-        doctor_id = request.args.get('doctor_id')
-        
-        if not doctor_id:
-            return jsonify({'error': 'doctor_id required'}), 400
-        
-        patients = db.get_patients_by_rhd_status(doctor_id, rhd_status)
-        
-        return jsonify({
-            'success': True,
-            'patients': patients
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@database_bp.route('/patients/rhd-summary', methods=['GET'])
-def get_rhd_summary():
-    """Get summary of RHD status for a doctor's patients"""
-    try:
-        doctor_id = request.args.get('doctor_id')
-        
-        if not doctor_id:
-            return jsonify({'error': 'doctor_id required'}), 400
-        
-        patients = db.get_patients_by_doctor(doctor_id)
-        
-        summary = {
-            'total': len(patients),
-            'confirmed': 0,
-            'suspected': 0,
-            'none': 0,
-            'unknown': 0,
-            'patients': patients
-        }
-        
-        for patient in patients:
-            status = patient.get('rhd_status', 'unknown')
-            if status in summary:
-                summary[status] += 1
-        
-        return jsonify({
-            'success': True,
-            'summary': summary
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-heart_sound_bp = Blueprint('heart_sound', __name__)
-
-@heart_sound_bp.route('/analyze', methods=['POST', 'OPTIONS'])
-def analyze_heart_sound():
-    """Analyze heart sound recording"""
-    try:
-        if request.files and 'file' in request.files:
-            file = request.files.get('file')
-            if not file:
-                return jsonify({'error': 'No file provided'}), 400
-            
-            # Process heart sound
-            return jsonify({
-                'success': True,
-                'analysis': {
-                    'heart_rate': 72,
-                    'rhythm': 'Regular',
-                    'murmur_detected': False,
-                    'recommendations': ['Normal heart sounds detected']
-                }
-            })
-        
-        return jsonify({'error': 'No file provided'}), 400
-        
-    except Exception as e:
-        print(f"❌ Heart sound analysis error: {str(e)}")
-        return jsonify({'error': str(e)}), 500

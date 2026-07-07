@@ -1,12 +1,14 @@
 // frontend_web/src/components/Dashboard/PatientProfile.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { patientService } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import { patientService, screeningService } from '../../services/api';
 import './PatientProfile.css';
 
 const PatientProfile = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const { user, token, isAuthenticated, loading: authLoading } = useAuth();
   
   const [patient, setPatient] = useState(null);
   const [triageRecords, setTriageRecords] = useState([]);
@@ -14,9 +16,17 @@ const PatientProfile = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
 
   // Fetch patient data
   const fetchPatientData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setError('Please log in to view patient details');
+      setLoading(false);
+      return;
+    }
+
     if (!patientId) {
       setError('No patient ID provided');
       setLoading(false);
@@ -26,6 +36,12 @@ const PatientProfile = () => {
     try {
       setLoading(true);
       setError(null);
+      
+      console.log('Fetching patient data:', {
+        patientId,
+        userId: user?.id,
+        doctorId: user?.doctor_id || user?.id
+      });
       
       const data = await patientService.getPatientDetails(patientId);
       
@@ -43,11 +59,57 @@ const PatientProfile = () => {
     } finally {
       setLoading(false);
     }
-  }, [patientId]);
+  }, [patientId, user, isAuthenticated]);
 
   useEffect(() => {
-    fetchPatientData();
-  }, [fetchPatientData]);
+    if (!authLoading) {
+      fetchPatientData();
+    }
+  }, [fetchPatientData, authLoading]);
+
+  // Handle heart sound analysis
+  const handleAnalyzeHeartSound = async (file) => {
+    if (!file) {
+      alert('Please select a heart sound file to analyze');
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalysisResult(null);
+
+    try {
+      // First, validate the heart sound
+      const validateResult = await screeningService.validate(file);
+      console.log('Validation result:', validateResult);
+
+      // Then get prediction
+      const predictResult = await screeningService.predict(file);
+      console.log('Prediction result:', predictResult);
+
+      setAnalysisResult({
+        validation: validateResult,
+        prediction: predictResult,
+        timestamp: new Date().toISOString()
+      });
+
+      // Refresh patient data to show new recording
+      await fetchPatientData();
+
+    } catch (err) {
+      console.error('Analysis error:', err);
+      alert(`Analysis failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // Handle file upload for analysis
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      handleAnalyzeHeartSound(file);
+    }
+  };
 
   // Handle back navigation
   const handleBack = () => {
@@ -87,8 +149,26 @@ const PatientProfile = () => {
     return statusMap[status] || statusMap.unknown;
   };
 
+  // If not authenticated, show login message
+  if (!isAuthenticated && !authLoading) {
+    return (
+      <div className="error-container">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <h3>Authentication Required</h3>
+        <p>Please log in to view patient details.</p>
+        <button className="btn-primary" onClick={() => navigate('/login')}>
+          Go to Login
+        </button>
+      </div>
+    );
+  }
+
   // Loading state
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="profile-loading">
         <div className="loading-spinner"></div>
@@ -223,6 +303,12 @@ const PatientProfile = () => {
         >
           Recordings ({totalRecordings})
         </button>
+        <button 
+          className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analysis')}
+        >
+          Analysis
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -310,7 +396,6 @@ const PatientProfile = () => {
                 </div>
               </div>
             ) : (
-              // Show recent triage records and recordings
               [...triageRecords, ...recordings]
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .slice(0, 5)
@@ -464,6 +549,79 @@ const PatientProfile = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'analysis' && (
+        <div className="analysis-tab">
+          <div className="tab-header">
+            <h2>Heart Sound Analysis</h2>
+          </div>
+          
+          <div className="analysis-container">
+            <div className="upload-section">
+              <h3>Upload Heart Sound for Analysis</h3>
+              <p>Upload a WAV file to analyze for RHD detection</p>
+              
+              <div className="file-upload-wrapper">
+                <input
+                  type="file"
+                  id="heart-sound-file"
+                  accept=".wav,.mp3,.m4a"
+                  onChange={handleFileUpload}
+                  disabled={analyzing}
+                  style={{ display: 'none' }}
+                />
+                <label htmlFor="heart-sound-file" className="upload-btn">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  {analyzing ? 'Analyzing...' : 'Select Audio File'}
+                </label>
+              </div>
+            </div>
+
+            {analysisResult && (
+              <div className="analysis-results">
+                <h3>Analysis Results</h3>
+                <div className="result-card">
+                  <div className="result-header">
+                    <span className="result-label">Prediction</span>
+                    <span className={`result-value ${analysisResult.prediction?.prediction === 'RHD' ? 'rhd-positive' : 'rhd-negative'}`}>
+                      {analysisResult.prediction?.prediction || 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="result-header">
+                    <span className="result-label">Confidence</span>
+                    <span className="result-value">
+                      {analysisResult.prediction?.confidence 
+                        ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%` 
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="result-header">
+                    <span className="result-label">Validation</span>
+                    <span className="result-value">
+                      {analysisResult.validation?.valid ? '✅ Valid' : '❌ Invalid'}
+                    </span>
+                  </div>
+                  <div className="result-header">
+                    <span className="result-label">Analysis Date</span>
+                    <span className="result-value">
+                      {new Date(analysisResult.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  {analysisResult.prediction?.suggestion && (
+                    <div className="result-suggestion">
+                      <strong>Recommendation:</strong> {analysisResult.prediction.suggestion}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
