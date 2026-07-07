@@ -77,7 +77,7 @@ def validate():
 # =========================
 # PREDICTION ENDPOINT (FIXED - JSON FIRST)
 # =========================
-@validation_bp.route('/predict', methods=['POST', 'OPTIONS'])
+@validation_bp.route('/predict-output', methods=['POST', 'OPTIONS'])
 def predict():
     """Predict heart condition from recording"""
     if request.method == 'OPTIONS':

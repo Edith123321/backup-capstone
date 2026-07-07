@@ -2022,8 +2022,8 @@ Search Bar
   }
 
   .dashboard-content {
-    margin-left: 0 !important;
-    padding: 16px;
+    margin-left: 0;
+    padding: 8px;
   }
 
   .sidebar-overlay {
