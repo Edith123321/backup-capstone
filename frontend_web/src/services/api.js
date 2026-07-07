@@ -215,25 +215,37 @@ export const patientService = {
     }
   },
 
-  // ========== NEW: Get patient with full details ==========
-  getPatientDetails: async (patientId) => {
-    try {
-      const [patientRes, triageRes, recordingsRes] = await Promise.all([
-        databaseApi.getPatient(patientId),
-        databaseApi.getTriageByPatient(patientId),
-        databaseApi.getRecordings(patientId),
-      ]);
-
-      return {
-        patient: patientRes.success ? patientRes.patient : null,
-        triage: triageRes.success ? triageRes.triage : [],
-        recordings: recordingsRes.success ? recordingsRes.recordings : [],
-      };
-    } catch (error) {
-      console.error('Error fetching patient details:', error);
-      throw error;
+ // In your api.js - update patientService.getPatientDetails
+getPatientDetails: async (patientId) => {
+  try {
+    // Get the token from localStorage
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No authentication token found');
     }
-  },
+
+    const [patientRes, triageRes, recordingsRes] = await Promise.all([
+      databaseApi.getPatient(patientId),
+      databaseApi.getTriageByPatient(patientId),
+      databaseApi.getRecordings(patientId),
+    ]);
+
+    // Check if patient exists
+    if (!patientRes.success || !patientRes.patient) {
+      throw new Error('Patient not found');
+    }
+
+    return {
+      patient: patientRes.patient,
+      triage: triageRes.success ? triageRes.triage : [],
+      recordings: recordingsRes.success ? recordingsRes.recordings : [],
+    };
+  } catch (error) {
+    console.error('Error fetching patient details:', error);
+    throw error;
+  }
+},
 
   // ========== NEW: Get RHD patients summary ==========
   getRHDSummary: async (doctorId) => {
