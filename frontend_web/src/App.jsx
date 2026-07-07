@@ -80,12 +80,14 @@ function AppContent() {
         </ProtectedRoute>
       } />
       
-      <Route path="/patient/:id" element={
-        <ProtectedRoute>
-          <Pa />
-        </ProtectedRoute>
-      } />
-      
+     <Route 
+  path="/patient/:id" 
+  element={
+    <ProtectedRoute>
+      <PatientProfile />
+    </ProtectedRoute>
+  } 
+/>
       <Route path="/history" element={
         <ProtectedRoute>
           <DoctorDashboard />
