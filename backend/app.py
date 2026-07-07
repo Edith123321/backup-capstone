@@ -62,6 +62,12 @@ app = Flask(__name__)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SESSION_TYPE'] = 'filesystem'
+# Store session files OUTSIDE the import path. Flask-Session's default
+# ('flask_session/' in the working dir) shadows the installed flask_session
+# package when a gunicorn worker restarts and re-imports the app, causing
+# "cannot import name 'Session' from 'flask_session'". A temp dir avoids it.
+app.config['SESSION_FILE_DIR'] = os.environ.get(
+    'SESSION_FILE_DIR', os.path.join(tempfile.gettempdir(), 'saka_sessions'))
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -179,9 +185,16 @@ def index():
 @app.route("/health")
 def health():
     """System health check"""
+    # Reflect the real classifier state rather than a flag that is never set.
+    try:
+        from api.v1.screening.heart_sound import classifier as _clf
+        ai_model_status = "loaded" if _clf is not None else "not_loaded"
+    except Exception:
+        ai_model_status = "unavailable"
+
     services_status = {
         "database": "healthy" if db else "unavailable",
-        "ai_model": "loaded" if hasattr(app, 'model_loaded') else "not_loaded",
+        "ai_model": ai_model_status,
         "severity_grading": "available" if severity_grader else "unavailable",
         "report_generator": "available" if report_generator else "unavailable"
     }
