@@ -1,7 +1,7 @@
 // src/BLE_Handler.cpp
 #include "BLE_Handler.h"
 
-BLE_Handler::BLE_Handler() : _isConnected(false), _pServer(nullptr), 
+BLE_Handler::BLE_Handler() : _isConnected(false), _pendingCommand(0), _pServer(nullptr),
                              _pCharacteristic(nullptr), _pService(nullptr) {}
 
 BLE_Handler::~BLE_Handler() {
@@ -23,7 +23,7 @@ bool BLE_Handler::begin() {
         BLECharacteristic::PROPERTY_INDICATE
     );
     
-    _pCharacteristic->setCallbacks(new CharacteristicCallbacks());
+    _pCharacteristic->setCallbacks(new CharacteristicCallbacks(this));
     _pCharacteristic->addDescriptor(new BLE2902());
     
     _pService->start();
@@ -80,14 +80,20 @@ void BLE_Handler::ServerCallbacks::onDisconnect(BLEServer* pServer) {
 void BLE_Handler::CharacteristicCallbacks::onWrite(BLECharacteristic* pCharacteristic) {
     std::string value = pCharacteristic->getValue();
     DEBUG_PRINTF("BLE write: %s\n", value.c_str());
-    
-    // Parse commands
-    if (value == "START") {
-        // Start recording command
-        // This would be handled by the main sketch
-    } else if (value == "STOP") {
-        // Stop recording command
+
+    // Record the command; the main sketch consumes it in loop() to start/stop
+    // the I2S audio streaming (callbacks run in the BLE task, so keep this light).
+    if (value == "START" || value == "START_RECORDING") {
+        _handler->_pendingCommand = 1;
+    } else if (value == "STOP" || value == "STOP_RECORDING") {
+        _handler->_pendingCommand = 2;
     }
+}
+
+uint8_t BLE_Handler::consumeCommand() {
+    uint8_t cmd = _pendingCommand;
+    _pendingCommand = 0;
+    return cmd;
 }
 
 void BLE_Handler::CharacteristicCallbacks::onRead(BLECharacteristic* pCharacteristic) {
