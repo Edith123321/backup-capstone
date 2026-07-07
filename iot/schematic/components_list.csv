@@ -1,0 +1,16 @@
+Item,Component,Specification,Qty,Unit Price (USD),Subtotal (USD),Notes
+1,ESP32 Development Board,WROOM-32 dual-core 240MHz Wi-Fi + BLE with I2S,1,6.00,6.00,Core MCU; streams audio via BLE/WebSocket
+2,INMP441 MEMS Microphone,I2S digital omnidirectional MEMS mic (24-bit),1,3.00,3.00,Acoustic sensor for PCG capture
+3,Dual-lumen Acoustic Stethoscope,Standard chestpiece + tubing (acoustic coupling donor),1,8.00,8.00,Couples chest acoustics into the MEMS chamber
+4,3.7V LiPo Battery,1000mAh single-cell rechargeable,1,6.00,6.00,Portable field power
+5,TP4056 Charging Module,USB-C Li-ion charge/protect board,1,1.00,1.00,Battery management + charging
+6,Acoustic Chamber (3D printed),PLA/PETG hermetically-sealed mic chamber,1,2.00,2.00,STL: A2D_Chamber_Coupler.stl
+7,Enclosure (3D printed),PLA/PETG ESP32 + battery housing,1,2.50,2.50,STL: ESP32_Enclosure.stl
+8,Slide Power Switch,SPDT panel-mount,1,0.30,0.30,On/off
+9,Status LEDs,3mm LED (Wi-Fi / BLE / audio activity),3,0.10,0.30,GPIO 4 / 5 / 18 per Config.h
+10,Resistors,220 ohm 1/4W LED current limiting,3,0.05,0.15,
+11,Silicone Tubing / Coupler,Medical-grade acoustic tubing,1,2.00,2.00,Chestpiece-to-chamber coupling
+12,Jumper Wires / Header Pins,Dupont assortment,1,1.50,1.50,I2S wiring (WS/BCK/DIN)
+13,Prototype PCB / Perfboard,50x70mm,1,1.00,1.00,Mounting
+14,Miscellaneous,Solder / heat-shrink / adhesive,1,1.50,1.50,Assembly consumables
+,,,TOTAL,,35.55,Under the sub-$50 cost-efficiency target
