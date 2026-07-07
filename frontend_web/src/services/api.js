@@ -41,36 +41,19 @@ api.interceptors.response.use(
   }
 );
 
-// =====================
-// SCREENING SERVICES
-// =====================
 export const screeningService = {
   healthCheck: async () => {
     const res = await api.get('/screening/health');
     return res.data;
   },
 
-  getModelInfo: async () => {
-    const res = await api.get('/screening/info');
-    return res.data;
-  },
-
-  predict: async (file) => {
+  predict: async (file, patientId, doctorId) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (patientId) formData.append('patient_id', patientId);
+    if (doctorId) formData.append('doctor_id', doctorId);
 
     const res = await api.post('/screening/predict', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-
-    return res.data;
-  },
-
-  batchPredict: async (files) => {
-    const formData = new FormData();
-    files.forEach(file => formData.append('files', file));
-
-    const res = await api.post('/screening/batch_predict', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
 
@@ -82,25 +65,32 @@ export const screeningService = {
     return res.data;
   },
 
-  // ========== NEW: Validate heart sound ==========
   validate: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-
     const res = await api.post('/screening/validate', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-
     return res.data;
   },
 
-  // ========== NEW: Get screening history ==========
   getHistory: async (patientId) => {
     const res = await api.get(`/screening/history/${patientId}`);
     return res.data;
   },
+  
+  // New: Save recording
+  saveRecording: async (data) => {
+    const res = await api.post('/screening/save-recording', data);
+    return res.data;
+  },
+  
+  // New: Get patient recordings
+  getPatientRecordings: async (patientId) => {
+    const res = await api.get(`/screening/recordings/${patientId}`);
+    return res.data;
+  }
 };
-
 // =====================
 // DATABASE API
 // =====================
