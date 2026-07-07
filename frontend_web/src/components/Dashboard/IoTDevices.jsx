@@ -1,9 +1,183 @@
 // frontend_web/src/components/Dashboard/IoTDevices.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { databaseApi } from '../../services/api';
+import { databaseApi, screeningService } from '../../services/api';
 import './IoTDevices.css';
 
+// ============================================
+// PCG WAVEFORM COMPONENT
+// ============================================
+const PCGWaveform = ({ audioData, isRecording, deviceName }) => {
+  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
+  const dataRef = useRef([]);
+  
+  useEffect(() => {
+    dataRef.current = audioData || [];
+  }, [audioData]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const drawWaveform = () => {
+      ctx.clearRect(0, 0, width, height);
+      
+      // Draw grid
+      ctx.strokeStyle = 'rgba(0, 70, 79, 0.05)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < width; i += 20) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+      }
+      for (let i = 0; i < height; i += 20) {
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(width, i);
+        ctx.stroke();
+      }
+
+      const data = dataRef.current;
+      
+      if (data.length === 0) {
+        // Draw flat line
+        ctx.strokeStyle = isRecording ? '#00464F' : '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
+        
+        // Draw "No Signal" text
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(isRecording ? 'Receiving signal...' : 'No signal - Connect device', width / 2, height / 2 - 10);
+        return;
+      }
+
+      // Draw waveform
+      const step = Math.max(1, Math.floor(data.length / width));
+      const normalizedData = [];
+      
+      for (let i = 0; i < width; i++) {
+        const start = Math.floor(i * step);
+        const end = Math.min(start + step, data.length);
+        let sum = 0;
+        for (let j = start; j < end; j++) {
+          sum += data[j] || 0;
+        }
+        normalizedData.push(sum / (end - start));
+      }
+
+      // Draw main waveform
+      const gradient = ctx.createLinearGradient(0, 0, width, 0);
+      if (isRecording) {
+        gradient.addColorStop(0, '#00464F');
+        gradient.addColorStop(0.5, '#0D9488');
+        gradient.addColorStop(1, '#00464F');
+      } else {
+        gradient.addColorStop(0, '#94a3b8');
+        gradient.addColorStop(1, '#64748b');
+      }
+
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = isRecording ? 'rgba(0, 70, 79, 0.3)' : 'transparent';
+      ctx.shadowBlur = isRecording ? 8 : 0;
+      
+      ctx.beginPath();
+      for (let i = 0; i < normalizedData.length; i++) {
+        const x = i;
+        const y = height / 2 - (normalizedData[i] * height * 0.8);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      // Draw fill under waveform
+      ctx.shadowBlur = 0;
+      const fillGradient = ctx.createLinearGradient(0, 0, 0, height);
+      if (isRecording) {
+        fillGradient.addColorStop(0, 'rgba(0, 70, 79, 0.2)');
+        fillGradient.addColorStop(1, 'rgba(0, 70, 79, 0)');
+      } else {
+        fillGradient.addColorStop(0, 'rgba(148, 163, 184, 0.1)');
+        fillGradient.addColorStop(1, 'rgba(148, 163, 184, 0)');
+      }
+      
+      ctx.fillStyle = fillGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      for (let i = 0; i < normalizedData.length; i++) {
+        const x = i;
+        const y = height / 2 - (normalizedData[i] * height * 0.8);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw recording indicator
+      if (isRecording) {
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.arc(width - 20, 20, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#dc2626';
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('REC', width - 30, 24);
+      }
+    };
+
+    const animate = () => {
+      drawWaveform();
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isRecording]);
+
+  return (
+    <div className="pcg-waveform-container">
+      <div className="waveform-header">
+        <span className="waveform-title">
+          {deviceName || 'PCG Waveform'}
+        </span>
+        <span className={`waveform-status ${isRecording ? 'recording' : 'idle'}`}>
+          {isRecording ? '● Live' : '○ Idle'}
+        </span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={200}
+        className="pcg-waveform-canvas"
+      />
+    </div>
+  );
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 const IoTDevices = () => {
   const { user } = useAuth();
   const [devices, setDevices] = useState([]);
@@ -13,6 +187,10 @@ const IoTDevices = () => {
   const [recordingStatus, setRecordingStatus] = useState('idle');
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [waveformData, setWaveformData] = useState([]);
+  const [showWaveform, setShowWaveform] = useState(false);
+  const [signalQuality, setSignalQuality] = useState(0);
+  const [recordingProgress, setRecordingProgress] = useState(0);
   const [registerForm, setRegisterForm] = useState({
     device_name: '',
     device_type: 'stethoscope',
@@ -24,6 +202,8 @@ const IoTDevices = () => {
   const audioContext = useRef(null);
   const audioChunks = useRef([]);
   const mediaRecorder = useRef(null);
+  const waveformBuffer = useRef([]);
+  const maxBufferSize = 1024;
 
   // Fetch devices
   const fetchDevices = useCallback(async () => {
@@ -50,7 +230,6 @@ const IoTDevices = () => {
   useEffect(() => {
     fetchDevices();
     
-    // Cleanup on unmount
     return () => {
       if (wsConnection.current) {
         wsConnection.current.close();
@@ -71,6 +250,9 @@ const IoTDevices = () => {
     try {
       setRecordingStatus('connecting');
       setSelectedDevice(device);
+      setShowWaveform(true);
+      setWaveformData([]);
+      waveformBuffer.current = [];
 
       // Close existing connection if any
       if (wsConnection.current) {
@@ -83,8 +265,8 @@ const IoTDevices = () => {
       ws.onopen = () => {
         console.log('Connected to IoT device:', device.device_name);
         setRecordingStatus('connected');
-        // Update device status in UI
         updateDeviceStatus(device.id, 'online');
+        setSignalQuality(100);
       };
       
       ws.onmessage = (event) => {
@@ -94,12 +276,15 @@ const IoTDevices = () => {
       ws.onclose = () => {
         console.log('Disconnected from IoT device');
         setRecordingStatus('disconnected');
+        setShowWaveform(false);
         updateDeviceStatus(device.id, 'offline');
+        setSignalQuality(0);
       };
       
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         setRecordingStatus('error');
+        setSignalQuality(0);
         alert('Failed to connect to device. Please check the IP address and try again.');
       };
       
@@ -123,27 +308,62 @@ const IoTDevices = () => {
     }
     setSelectedDevice(null);
     setRecordingStatus('idle');
+    setShowWaveform(false);
+    setWaveformData([]);
+    waveformBuffer.current = [];
+    setSignalQuality(0);
   };
 
   // Handle incoming audio data
   const handleAudioData = (data) => {
     try {
-      // Parse the incoming data
       const audioData = typeof data === 'string' ? JSON.parse(data) : data;
       
-      if (audioData.type === 'audio_chunk') {
-        // Handle audio chunk
-        const base64Data = audioData.data;
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+      if (audioData.type === 'audio_chunk' || audioData.type === 'waveform') {
+        // Handle waveform data for visualization
+        const rawData = audioData.data || audioData;
+        let values;
+        
+        if (typeof rawData === 'string') {
+          // Base64 encoded data
+          const binaryString = atob(rawData);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          values = Array.from(bytes);
+        } else if (Array.isArray(rawData)) {
+          values = rawData;
+        } else if (rawData.buffer) {
+          values = Array.from(new Float32Array(rawData.buffer));
+        } else {
+          values = [];
         }
-        audioChunks.current.push(bytes.buffer);
+
+        // Update waveform buffer
+        waveformBuffer.current = [...waveformBuffer.current, ...values];
+        if (waveformBuffer.current.length > maxBufferSize) {
+          waveformBuffer.current = waveformBuffer.current.slice(-maxBufferSize);
+        }
+        setWaveformData(waveformBuffer.current);
+        
+        // Store audio data if recording
+        if (isRecording) {
+          audioChunks.current.push(values);
+          setRecordingProgress(prev => Math.min(prev + 5, 95));
+        }
+
+        // Update signal quality
+        if (values.length > 0) {
+          const rms = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0) / values.length);
+          const quality = Math.min(100, Math.round(rms * 100));
+          setSignalQuality(Math.max(quality, 5));
+        }
       } else if (audioData.type === 'recording_complete') {
-        // Handle completed recording
         console.log('Recording complete received from device');
         processRecording();
+      } else if (audioData.type === 'signal_quality') {
+        setSignalQuality(audioData.quality || 50);
       }
     } catch (err) {
       console.error('Error processing audio data:', err);
@@ -158,10 +378,9 @@ const IoTDevices = () => {
     }
 
     try {
-      // Reset audio chunks
       audioChunks.current = [];
+      setRecordingProgress(0);
       
-      // Send start recording command to device
       wsConnection.current.send(JSON.stringify({ 
         action: 'start_recording',
         timestamp: new Date().toISOString()
@@ -186,7 +405,6 @@ const IoTDevices = () => {
     }
 
     try {
-      // Send stop recording command to device
       wsConnection.current.send(JSON.stringify({ 
         action: 'stop_recording',
         timestamp: new Date().toISOString()
@@ -194,11 +412,11 @@ const IoTDevices = () => {
       
       setIsRecording(false);
       setRecordingStatus('processing');
+      setRecordingProgress(100);
       
-      // Process recording after a short delay
       setTimeout(() => {
         processRecording();
-      }, 2000);
+      }, 1500);
       
     } catch (error) {
       console.error('Failed to stop recording:', error);
@@ -213,12 +431,17 @@ const IoTDevices = () => {
       if (audioChunks.current.length === 0) {
         console.warn('No audio data received');
         setRecordingStatus('idle');
+        setRecordingProgress(0);
         return;
       }
 
-      // Combine audio chunks
-      const combinedBuffer = new Blob(audioChunks.current, { type: 'audio/wav' });
-      const file = new File([combinedBuffer], `recording_${Date.now()}.wav`, { type: 'audio/wav' });
+      // Flatten audio chunks
+      const allValues = audioChunks.current.flat();
+      const audioBuffer = new Float32Array(allValues);
+      
+      // Create WAV file
+      const wavBlob = createWavBlob(audioBuffer);
+      const file = new File([wavBlob], `recording_${Date.now()}.wav`, { type: 'audio/wav' });
       
       // Send to backend for analysis
       await analyzeRecording(file);
@@ -226,44 +449,85 @@ const IoTDevices = () => {
       // Reset
       audioChunks.current = [];
       setRecordingStatus('idle');
+      setRecordingProgress(0);
       
     } catch (error) {
       console.error('Error processing recording:', error);
       setRecordingStatus('error');
+      setRecordingProgress(0);
+    }
+  };
+
+  // Create WAV blob from audio data
+  const createWavBlob = (audioData) => {
+    const sampleRate = 44100;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+    const blockAlign = numChannels * bitsPerSample / 8;
+    const dataSize = audioData.length * bitsPerSample / 8;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    // RIFF header
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    // Write audio data
+    const offset = 44;
+    for (let i = 0; i < audioData.length; i++) {
+      const value = Math.max(-1, Math.min(1, audioData[i] || 0));
+      const intValue = value * 32767;
+      view.setInt16(offset + i * 2, intValue, true);
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
+  const writeString = (view, offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
     }
   };
 
   // Analyze recording using screening service
   const analyzeRecording = async (file) => {
     try {
-      // Import screening service dynamically to avoid circular dependency
-      const { screeningService } = await import('../../services/api');
-      
-      // Get patient ID from selected device or prompt
       const patientId = prompt('Enter patient ID for this recording:');
       if (!patientId) {
         alert('Patient ID is required to save the recording');
         return;
       }
 
-      // Get prediction
-      const result = await screeningService.predict(file);
+      const doctorId = user?.id;
+      const result = await screeningService.predict(file, patientId, doctorId);
       
       if (result.success || result.prediction) {
-        // Save recording to database
         const recordingData = {
           patient_id: patientId,
-          doctor_id: user?.id,
+          doctor_id: doctorId,
           file_name: `IoT_recording_${Date.now()}.wav`,
           prediction: result.prediction || result.class || 'Unknown',
           confidence: result.confidence || 0,
           recording_date: new Date().toISOString(),
-          notes: `Recorded via IoT stethoscope on ${new Date().toLocaleString()}`
+          notes: `Recorded via IoT stethoscope on ${new Date().toLocaleString()}`,
+          device_name: selectedDevice?.device_name || 'Unknown IoT Device'
         };
 
         await databaseApi.saveRecording(recordingData);
         
-        alert(`Analysis complete: ${recordingData.prediction} (${(recordingData.confidence * 100).toFixed(1)}% confidence)`);
+        alert(`✅ Analysis complete: ${recordingData.prediction} (${(recordingData.confidence * 100).toFixed(1)}% confidence)`);
       }
       
     } catch (error) {
@@ -376,15 +640,16 @@ const IoTDevices = () => {
         </div>
 
         <div className="status-card">
-          <div className="status-icon status-icon-recording">
+          <div className="status-icon status-icon-signal">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
+              <path d="M22 2L15 9"/>
+              <path d="M22 2L17 13L13 9L22 2Z"/>
             </svg>
           </div>
           <div className="status-info">
-            <span className="status-label">Recording Status</span>
-            <span className={`status-value ${isRecording ? 'recording-active' : ''}`}>
-              {isRecording ? 'Recording...' : 'Stopped'}
+            <span className="status-label">Signal Quality</span>
+            <span className={`status-value ${signalQuality > 70 ? 'good' : signalQuality > 30 ? 'fair' : 'poor'}`}>
+              {signalQuality > 70 ? 'Good' : signalQuality > 30 ? 'Fair' : 'Poor'} ({signalQuality}%)
             </span>
           </div>
         </div>
@@ -420,6 +685,28 @@ const IoTDevices = () => {
           </div>
         </div>
       </div>
+
+      {/* PCG Waveform Display */}
+      {showWaveform && (
+        <div className="waveform-section">
+          <PCGWaveform 
+            audioData={waveformData}
+            isRecording={isRecording}
+            deviceName={selectedDevice?.device_name}
+          />
+          {isRecording && (
+            <div className="recording-progress">
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill" 
+                  style={{ width: `${recordingProgress}%` }}
+                />
+              </div>
+              <span className="progress-text">{recordingProgress}%</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Recording Controls */}
       <div className="recording-controls">

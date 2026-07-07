@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { databaseApi } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import AnatomicalMap, { AnatomicalMapTrigger } from './AnatomicalMap';
 import './Encounter.css';
 
 // Material Icons
@@ -20,10 +21,53 @@ import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import FavoriteIcon from '@mui/icons-material/Favorite';
+import ReportIcon from '@mui/icons-material/Description';
 import { CircularProgress } from '@mui/material';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com';
 
+// ============================================
+// AUSCULTATION POINTS
+// ============================================
+const AUSCULTATION_POINTS = {
+  MV: { label: 'Mitral Valve', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  AV: { label: 'Aortic Valve', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+  PV: { label: 'Pulmonary Valve', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' },
+  TV: { label: 'Tricuspid Valve', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)' }
+};
+
+// ============================================
+// SEVERITY GRADE HELPER
+// ============================================
+const getSeverityGrade = (prediction, confidence) => {
+  if (!prediction || prediction === 'Unknown') {
+    return { grade: 'N/A', label: 'Pending', color: '#94a3b8', bg: '#f1f5f9' };
+  }
+  
+  if (prediction === 'Normal') {
+    if (confidence > 0.8) {
+      return { grade: '0', label: 'Normal', color: '#22c55e', bg: '#dcfce7' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  if (prediction === 'RHD') {
+    if (confidence > 0.8) {
+      return { grade: '2', label: 'Definite RHD', color: '#dc2626', bg: '#fee2e2' };
+    } else if (confidence > 0.6) {
+      return { grade: '2', label: 'Possible RHD', color: '#ea580c', bg: '#ffedd5' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  return { grade: 'N/A', label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' };
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 const NewEncounter = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -32,6 +76,8 @@ const NewEncounter = () => {
   const [existingPatients, setExistingPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [selectedAuscultationPoint, setSelectedAuscultationPoint] = useState('MV');
 
   // Section 1: Patient Information
   const [patient, setPatient] = useState({
@@ -73,11 +119,15 @@ const NewEncounter = () => {
     isValidHeartSound: null,
     qualityScore: null,
     validationIssues: [],
-    duration: 0
+    duration: 0,
+    severity: null,
+    auscultation_point: 'MV',
+    auscultation_label: 'Mitral Valve'
   });
 
   // Section 4: Results
   const [encounterResult, setEncounterResult] = useState(null);
+  const [showReportButton, setShowReportButton] = useState(false);
 
   // Load existing patients
   useEffect(() => {
@@ -126,7 +176,6 @@ const NewEncounter = () => {
   const handlePatientChange = (e) => {
     const { name, value } = e.target;
     setPatient({ ...patient, [name]: value });
-    // If user types, mark as new patient
     if (name === 'name' && value) {
       setPatient(prev => ({ ...prev, isNew: true, existingPatientId: null }));
     }
@@ -149,7 +198,10 @@ const NewEncounter = () => {
         isValidHeartSound: null,
         qualityScore: null,
         validationIssues: [],
-        duration: 0
+        duration: 0,
+        severity: null,
+        auscultation_point: selectedAuscultationPoint,
+        auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label
       });
     }
   };
@@ -181,7 +233,9 @@ const NewEncounter = () => {
           isValidHeartSound: null,
           qualityScore: null,
           validationIssues: [],
-          duration: duration
+          duration: duration,
+          auscultation_point: selectedAuscultationPoint,
+          auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label
         });
         
         stream.getTracks().forEach(track => track.stop());
@@ -190,7 +244,6 @@ const NewEncounter = () => {
       mediaRecorder.start();
       setRecording({ ...recording, isRecording: true });
       
-      // Auto-stop after 10 seconds
       setTimeout(() => {
         if (mediaRecorder.state === 'recording') {
           mediaRecorder.stop();
@@ -202,13 +255,9 @@ const NewEncounter = () => {
     }
   };
 
-  const stopRecording = () => {
-    // Stop will be handled by the mediaRecorder onstop event
-  };
+  const stopRecording = () => {};
 
-  // ============================================================
-  // COMPLETE ENCOUNTER - Sends everything to backend at once
-  // ============================================================
+  // Complete Encounter
   const completeEncounter = async () => {
     setLoading(true);
     setError(null);
@@ -216,6 +265,8 @@ const NewEncounter = () => {
     try {
       const formData = new FormData();
       formData.append('doctor_id', user.id);
+      formData.append('auscultation_point', selectedAuscultationPoint);
+      formData.append('auscultation_label', AUSCULTATION_POINTS[selectedAuscultationPoint]?.label || 'Mitral Valve');
 
       // Patient data
       if (patient.isNew) {
@@ -250,7 +301,7 @@ const NewEncounter = () => {
         notes: triage.notes || ''
       }));
 
-      // Audio file (if available)
+      // Audio file
       if (recording.file) {
         formData.append('file', recording.file);
       }
@@ -263,30 +314,39 @@ const NewEncounter = () => {
       const result = await response.json();
 
       if (result.success) {
+        // Calculate severity
+        const severity = getSeverityGrade(
+          result.ml_prediction?.prediction,
+          result.ml_prediction?.confidence
+        );
+
         // Update recording with prediction result
-        if (result.ml_prediction) {
-          setRecording({
-            ...recording,
-            prediction: result.ml_prediction,
-            isProcessing: false
-          });
-        }
+        setRecording({
+          ...recording,
+          prediction: result.ml_prediction,
+          severity: severity,
+          isProcessing: false
+        });
 
         setEncounterResult({
           success: true,
           patientId: result.patient_id,
           triage: result.triage,
           prediction: result.ml_prediction,
+          severity: severity,
           recommendation: result.recommendation,
           followUpNeeded: result.rhd_status?.requires_follow_up || false,
           followUpDays: result.rhd_status?.follow_up_days || null,
+          auscultation: result.auscultation,
           message: `✅ Encounter completed! ${result.recommendation?.message || ''}`
         });
 
-        // Navigate to patient after 3 seconds
+        setShowReportButton(true);
+
+        // Navigate to patient after 5 seconds
         setTimeout(() => {
           navigate(`/patient/${result.patient_id}`);
-        }, 3000);
+        }, 5000);
       } else {
         throw new Error(result.error || 'Failed to save encounter');
       }
@@ -298,9 +358,41 @@ const NewEncounter = () => {
     }
   };
 
-  // ============================================================
+  // Generate Report
+  const handleGenerateReport = async () => {
+    try {
+      const response = await fetch('/api/v1/reports/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          patient_id: encounterResult?.patientId,
+          symptoms: triage.symptoms?.split(',') || [],
+          clinical_notes: triage.notes || '',
+          recommendations: [
+            encounterResult?.recommendation?.message || 'Follow-up recommended',
+            'Complete echocardiography',
+            'Cardiology consultation within 30 days'
+          ]
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        alert(`Report generated successfully!`);
+        window.open(`/api/v1/reports/download/${data.filename}`, '_blank');
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Failed to generate report');
+    }
+  };
+
+  // ============================================
   // RENDER FUNCTIONS
-  // ============================================================
+  // ============================================
 
   const renderPatientSection = () => (
     <div className="encounter-section">
@@ -570,6 +662,17 @@ const NewEncounter = () => {
     <div className="encounter-section">
       <div className="section-header">
         <h2 className='section-badge'>Heart Sound Recording</h2>
+        <div className="section-actions">
+          <AnatomicalMapTrigger
+            selectedPoint={selectedAuscultationPoint}
+            onClick={() => setShowMap(true)}
+          />
+          <span className="auscultation-display">
+            Point: <strong style={{ color: AUSCULTATION_POINTS[selectedAuscultationPoint]?.color }}>
+              {AUSCULTATION_POINTS[selectedAuscultationPoint]?.label || 'MV'}
+            </strong>
+          </span>
+        </div>
       </div>
       
       <div className="recording-controls">
@@ -611,6 +714,12 @@ const NewEncounter = () => {
               <PlayArrowIcon className="audio-icon" />
               <audio controls src={recording.audioUrl} />
             </div>
+            <div className="audio-info">
+              <span>Duration: {recording.duration.toFixed(1)}s</span>
+              <span className="auscultation-label">
+                Point: {recording.auscultation_label || 'MV'}
+              </span>
+            </div>
             <button 
               className="btn-icon" 
               onClick={() => {
@@ -623,7 +732,8 @@ const NewEncounter = () => {
                   isValidHeartSound: null,
                   qualityScore: null,
                   validationIssues: [],
-                  duration: 0
+                  duration: 0,
+                  severity: null
                 });
               }}
             >
@@ -664,7 +774,8 @@ const NewEncounter = () => {
                     isValidHeartSound: null,
                     qualityScore: null,
                     validationIssues: [],
-                    duration: 0
+                    duration: 0,
+                    severity: null
                   });
                 }}
               >
@@ -684,6 +795,24 @@ const NewEncounter = () => {
                 {(recording.prediction.confidence * 100).toFixed(1) || '0.0'}% confidence
               </span>
             </div>
+            
+            {recording.severity && (
+              <div 
+                className="severity-display"
+                style={{
+                  backgroundColor: recording.severity.bg,
+                  color: recording.severity.color,
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  margin: '8px 0',
+                  textAlign: 'center',
+                  fontWeight: '600'
+                }}
+              >
+                Severity Grade {recording.severity.grade}: {recording.severity.label}
+              </div>
+            )}
+
             <div className="prediction-details">
               <div className="prob-bar">
                 <span>Normal</span>
@@ -706,29 +835,44 @@ const NewEncounter = () => {
                 <span>{((recording.prediction.probabilities?.RHD || 0) * 100).toFixed(1)}%</span>
               </div>
             </div>
-            {recording.qualityScore && (
-              <div className="quality-score">
-                <span>Signal Quality: {(recording.qualityScore * 100).toFixed(0)}%</span>
-                <div className="quality-bar">
-                  <div 
-                    className={`quality-fill ${recording.qualityScore > 0.7 ? 'good' : recording.qualityScore > 0.4 ? 'fair' : 'poor'}`}
-                    style={{ width: `${recording.qualityScore * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
+            
+            <div className="auscultation-result">
+              <span>Auscultation Point: <strong>{recording.auscultation_label || 'MV'}</strong></span>
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 
-  // ============================================================
+  // ============================================
   // MAIN RETURN
-  // ============================================================
+  // ============================================
 
   return (
     <div className="new-encounter-container">
+      {/* Anatomical Map */}
+      <AnatomicalMap
+        selectedPoint={selectedAuscultationPoint}
+        onPointSelect={(pointId) => {
+          setSelectedAuscultationPoint(pointId);
+          setShowMap(false);
+          // Update recording with new point
+          if (recording.file) {
+            setRecording({
+              ...recording,
+              auscultation_point: pointId,
+              auscultation_label: AUSCULTATION_POINTS[pointId]?.label
+            });
+          }
+        }}
+        onClose={() => setShowMap(false)}
+        isOpen={showMap}
+        showLabels={true}
+        interactive={true}
+        size="medium"
+      />
+
       <div className="encounter-header">
         <h1>New Patient Encounter</h1>
         <p>Complete the entire patient assessment in one page</p>
@@ -750,6 +894,12 @@ const NewEncounter = () => {
             {encounterResult.followUpNeeded && (
               <p>⚠️ Follow-up required in {encounterResult.followUpDays} days</p>
             )}
+            {encounterResult.severity && (
+              <p>Severity Grade {encounterResult.severity.grade}: {encounterResult.severity.label}</p>
+            )}
+            {encounterResult.auscultation && (
+              <p>Auscultation Point: {encounterResult.auscultation.label}</p>
+            )}
             <p>Redirecting to patient profile...</p>
           </div>
         </div>
@@ -764,31 +914,45 @@ const NewEncounter = () => {
         {renderRecordingSection()}
 
         <div className="encounter-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => navigate('/dashboard')}
-          >
-            <CancelIcon />
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={loading || !patient.name}
-          >
-            {loading ? (
-              <>
-                <CircularProgress size={20} color="inherit" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <SaveIcon />
-                Complete Encounter
-              </>
+          <div className="actions-left">
+            {showReportButton && encounterResult?.success && (
+              <button
+                type="button"
+                className="btn-report"
+                onClick={handleGenerateReport}
+              >
+                <ReportIcon />
+                Generate Report
+              </button>
             )}
-          </button>
+          </div>
+          <div className="actions-right">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => navigate('/dashboard')}
+            >
+              <CancelIcon />
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading || !patient.name}
+            >
+              {loading ? (
+                <>
+                  <CircularProgress size={20} color="inherit" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <SaveIcon />
+                  Complete Encounter
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>

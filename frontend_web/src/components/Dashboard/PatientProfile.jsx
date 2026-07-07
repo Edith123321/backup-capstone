@@ -2,20 +2,59 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { patientService, screeningService } from '../../services/api';
+import { patientService, screeningService, databaseApi } from '../../services/api';
+import AnatomicalMap, { AnatomicalMapTrigger } from './AnatomicalMap';
 import './PatientProfile.css';
 
+// ============================================
+// SEVERITY GRADE HELPER
+// ============================================
+const getSeverityGrade = (prediction, confidence) => {
+  if (!prediction || prediction === 'Unknown') {
+    return { grade: 'N/A', label: 'Pending', color: '#94a3b8', bg: '#f1f5f9' };
+  }
+  
+  if (prediction === 'Normal') {
+    if (confidence > 0.8) {
+      return { grade: '0', label: 'Normal', color: '#22c55e', bg: '#dcfce7' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  if (prediction === 'RHD') {
+    if (confidence > 0.8) {
+      return { grade: '2', label: 'Definite RHD', color: '#dc2626', bg: '#fee2e2' };
+    } else if (confidence > 0.6) {
+      return { grade: '2', label: 'Possible RHD', color: '#ea580c', bg: '#ffedd5' };
+    } else {
+      return { grade: '1', label: 'Monitor', color: '#f59e0b', bg: '#fed7aa' };
+    }
+  }
+  
+  return { grade: 'N/A', label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' };
+};
+
+// ============================================
+// AUSCULTATION POINT DISPLAY
+// ============================================
+const AUSCULTATION_POINTS = {
+  MV: { label: 'Mitral Valve', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  AV: { label: 'Aortic Valve', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+  PV: { label: 'Pulmonary Valve', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' },
+  TV: { label: 'Tricuspid Valve', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)' }
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 const PatientProfile = () => {
-  // ============================================
   // 1. HOOKS & ROUTING
-  // ============================================
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
 
-  // ============================================
   // 2. STATE
-  // ============================================
   const [patient, setPatient] = useState(null);
   const [triageRecords, setTriageRecords] = useState([]);
   const [recordings, setRecordings] = useState([]);
@@ -24,11 +63,15 @@ const PatientProfile = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [showMap, setShowMap] = useState(false);
+  const [selectedAuscultationPoint, setSelectedAuscultationPoint] = useState('MV');
+  const [severityHistory, setSeverityHistory] = useState([]);
+  const [prognosticRisk, setPrognosticRisk] = useState(null);
+  const [followUpReminders, setFollowUpReminders] = useState([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
-  // ============================================
   // 3. EFFECTS
-  // ============================================
-
   // Reset state when patient ID changes
   useEffect(() => {
     setPatient(null);
@@ -37,6 +80,9 @@ const PatientProfile = () => {
     setError(null);
     setLoading(true);
     setAnalysisResult(null);
+    setSeverityHistory([]);
+    setPrognosticRisk(null);
+    setFollowUpReminders([]);
   }, [id]);
 
   // Fetch patient data
@@ -44,18 +90,57 @@ const PatientProfile = () => {
     if (authLoading || !isAuthenticated || !id) return;
 
     try {
+      setLoading(true);
+      console.log('🔄 Fetching patient data for ID:', id);
+      
+      // Fetch patient details
       const data = await patientService.getPatientDetails(id);
+      console.log('📊 Patient data received:', data);
 
       if (data?.patient) {
         setPatient(data.patient);
         setTriageRecords(data.triage || []);
-        setRecordings(data.recordings || []);
+        setRecordings(Array.isArray(data.recordings) ? data.recordings : []);
         setError(null);
+        console.log(`✅ Loaded ${data.recordings?.length || 0} recordings`);
+        
+        // Fetch severity history
+        try {
+          const historyRes = await databaseApi.getSeverityHistory(id);
+          if (historyRes.success) {
+            setSeverityHistory(historyRes.history || []);
+          }
+        } catch (e) {
+          console.warn('Could not fetch severity history:', e);
+        }
+        
+        // Fetch prognostic risk
+        try {
+          const riskRes = await fetch(`/api/v1/prognosis/risk/${id}`);
+          if (riskRes.ok) {
+            const riskData = await riskRes.json();
+            if (riskData.success) {
+              setPrognosticRisk(riskData.prognosis);
+            }
+          }
+        } catch (e) {
+          console.warn('Could not fetch prognostic risk:', e);
+        }
+        
+        // Fetch follow-up reminders
+        try {
+          const reminderRes = await databaseApi.getFollowUpReminders(id);
+          if (reminderRes.success) {
+            setFollowUpReminders(reminderRes.reminders || []);
+          }
+        } catch (e) {
+          console.warn('Could not fetch follow-up reminders:', e);
+        }
       } else {
         setError('Patient record could not be found.');
       }
     } catch (err) {
-      console.error('Error fetching patient data:', err);
+      console.error('❌ Error fetching patient data:', err);
       setError(err.message || 'Error connecting to server.');
     } finally {
       setLoading(false);
@@ -66,61 +151,128 @@ const PatientProfile = () => {
     fetchPatientData();
   }, [fetchPatientData]);
 
-  // ============================================
   // 4. HANDLERS
-  // ============================================
-
-  // In PatientProfile.jsx, update the handleAnalyzeHeartSound function
-
   const handleAnalyzeHeartSound = async (file) => {
     if (!file) return;
 
     setAnalyzing(true);
     setAnalysisResult(null);
+    setUploadProgress(0);
 
     try {
-      // Pass patient_id and doctor_id to save recording automatically
-      const result = await screeningService.predict(
-        file,
-        id,  // patient_id from URL
-        user?.doctor_id || user?.id  // doctor_id from auth
-      );
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 300);
 
-      console.log('Analysis result:', result);
+      const doctorId = user?.doctor_id || user?.id;
+      console.log('📤 Analyzing heart sound for patient:', id);
+      
+      // Include auscultation point
+      const result = await screeningService.predict(
+        file, 
+        id, 
+        doctorId,
+        {
+          auscultation_point: selectedAuscultationPoint,
+          auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label
+        }
+      );
+      console.log('📊 Analysis result:', result);
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      const prediction = result.prediction || result.class || 'Unknown';
+      const confidence = result.confidence || 0;
+      const severity = getSeverityGrade(prediction, confidence);
 
       setAnalysisResult({
         prediction: {
-          prediction: result.prediction || result.class || 'Unknown',
-          confidence: result.confidence || 0,
+          prediction: prediction,
+          confidence: confidence,
           prob_normal: result.prob_normal || 0,
-          prob_rhd: result.prob_rhd || 0
+          prob_rhd: result.prob_rhd || 0,
+          severity: severity,
+          auscultation_point: selectedAuscultationPoint,
+          auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label
         },
         timestamp: new Date().toISOString(),
         recording_id: result.recording_id
       });
 
-      // Refresh patient data to show new recording
       await fetchPatientData();
+      setActiveTab('recordings');
 
     } catch (err) {
-      console.error('Analysis error:', err);
-      alert(`Analysis failed: ${err.message}`);
+      console.error('❌ Analysis error:', err);
+      alert(`Analysis failed: ${err.message || 'Unknown error'}`);
     } finally {
       setAnalyzing(false);
+      setUploadProgress(0);
     }
   };
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
+      const validTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/m4a', 'audio/x-m4a'];
+      const validExtensions = ['.wav', '.mp3', '.m4a'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      
+      if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+        alert('Please upload a valid audio file (WAV, MP3, or M4A)');
+        return;
+      }
+      
       handleAnalyzeHeartSound(file);
+    }
+    event.target.value = '';
+  };
+
+  const handleGenerateReport = async () => {
+    setGeneratingReport(true);
+    try {
+      const response = await fetch('/api/v1/reports/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          patient_id: id,
+          symptoms: [],
+          clinical_notes: 'Generated from patient profile',
+          recommendations: [
+            'Complete echocardiography',
+            'Cardiology consultation within 30 days',
+            'Continue monitoring symptoms'
+          ]
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        alert(`Report generated successfully! Download: ${data.filename}`);
+        // Open download URL
+        window.open(`/api/v1/reports/download/${data.filename}`, '_blank');
+      } else {
+        alert('Failed to generate report: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Failed to generate report');
+    } finally {
+      setGeneratingReport(false);
     }
   };
 
-  // ============================================
   // 5. HELPERS
-  // ============================================
-
   const getRHDStatusDisplay = (status) => {
     const statusMap = {
       'confirmed': { label: 'Confirmed RHD', color: '#dc2626', bg: '#fee2e2' },
@@ -142,10 +294,23 @@ const PatientProfile = () => {
     return classes[color] || 'badge-gray';
   };
 
-  // ============================================
-  // 6. RENDER: LOADING
-  // ============================================
+  const getPredictionBadge = (prediction) => {
+    if (!prediction || prediction === 'Unknown' || prediction === 'Pending') {
+      return 'badge-gray';
+    }
+    return prediction === 'RHD' ? 'badge-red' : 'badge-green';
+  };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '—';
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch {
+      return '—';
+    }
+  };
+
+  // 6. RENDER: LOADING
   if (authLoading || (loading && !patient)) {
     return (
       <div className="profile-loading">
@@ -155,10 +320,7 @@ const PatientProfile = () => {
     );
   }
 
-  // ============================================
   // 7. RENDER: ERROR
-  // ============================================
-
   if (error) {
     return (
       <div className="error-container">
@@ -177,10 +339,7 @@ const PatientProfile = () => {
     );
   }
 
-  // ============================================
   // 8. RENDER: MAIN
-  // ============================================
-
   if (!patient) return null;
 
   const rhdStatus = getRHDStatusDisplay(patient.rhd_status || 'unknown');
@@ -188,6 +347,8 @@ const PatientProfile = () => {
   const abnormalResults = triageRecords.filter(t =>
     t.triage_color === 'Red' || t.triage_color === 'Orange'
   ).length;
+  const rhdRecordings = recordings.filter(r => r.prediction === 'RHD').length;
+  const normalRecordings = recordings.filter(r => r.prediction === 'Normal').length;
 
   return (
     <div className="patient-profile-container">
@@ -236,6 +397,10 @@ const PatientProfile = () => {
           >
             + New Triage
           </button>
+          <AnatomicalMapTrigger
+            selectedPoint={selectedAuscultationPoint}
+            onClick={() => setShowMap(true)}
+          />
           <label className="btn-primary btn-upload">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 3 19 12 5 21 5 3" />
@@ -243,14 +408,42 @@ const PatientProfile = () => {
             Analyze Sound
             <input
               type="file"
-              accept=".wav,.mp3,.m4a"
+              accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
               onChange={handleFileUpload}
               disabled={analyzing}
               hidden
             />
           </label>
+          <button
+            className="btn-primary"
+            onClick={handleGenerateReport}
+            disabled={generatingReport}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            {generatingReport ? 'Generating...' : 'Report'}
+          </button>
         </div>
       </header>
+
+      {/* ========== ANATOMICAL MAP ========== */}
+      <AnatomicalMap
+        selectedPoint={selectedAuscultationPoint}
+        onPointSelect={(pointId) => {
+          setSelectedAuscultationPoint(pointId);
+          setShowMap(false);
+        }}
+        onClose={() => setShowMap(false)}
+        isOpen={showMap}
+        showLabels={true}
+        interactive={true}
+        size="medium"
+      />
 
       {/* ========== TABS ========== */}
       <nav className="profile-tabs">
@@ -278,6 +471,12 @@ const PatientProfile = () => {
         >
           AI Analysis
         </button>
+        <button
+          className={`tab ${activeTab === 'prognosis' ? 'active' : ''}`}
+          onClick={() => setActiveTab('prognosis')}
+        >
+          Prognosis
+        </button>
       </nav>
 
       {/* ========== TAB CONTENT ========== */}
@@ -286,6 +485,7 @@ const PatientProfile = () => {
         {/* --- OVERVIEW TAB --- */}
         {activeTab === 'overview' && (
           <section className="overview-section">
+            {/* Stats remain the same */}
             <div className="stats-grid">
               <div className="stat-card">
                 <span className="stat-value">{totalEncounters}</span>
@@ -296,8 +496,8 @@ const PatientProfile = () => {
                 <span className="stat-label">Heart Sound Recordings</span>
               </div>
               <div className="stat-card">
-                <span className="stat-value">{abnormalResults}</span>
-                <span className="stat-label">Abnormal Results</span>
+                <span className="stat-value">{rhdRecordings}</span>
+                <span className="stat-label">RHD Detected</span>
               </div>
               <div className="stat-card" style={{ borderColor: rhdStatus.color }}>
                 <span className="stat-value" style={{ color: rhdStatus.color }}>
@@ -307,6 +507,95 @@ const PatientProfile = () => {
               </div>
             </div>
 
+            {/* Prognostic Risk Summary */}
+            {prognosticRisk && (
+              <div className="info-card" style={{ marginBottom: 20 }}>
+                <h3 className="card-title">Prognostic Risk Assessment</h3>
+                <div className="prognostic-summary">
+                  <div className="prognostic-item">
+                    <span className="prognostic-label">Risk Score</span>
+                    <span className={`prognostic-value ${prognosticRisk?.prognosis?.risk_level?.toLowerCase() || 'unknown'}`}>
+                      {prognosticRisk?.prognosis?.risk_score || '—'}%
+                    </span>
+                  </div>
+                  <div className="prognostic-item">
+                    <span className="prognostic-label">Risk Level</span>
+                    <span className={`prognostic-value ${prognosticRisk?.prognosis?.risk_level?.toLowerCase() || 'unknown'}`}>
+                      {prognosticRisk?.prognosis?.risk_level || 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="prognostic-item">
+                    <span className="prognostic-label">Next State</span>
+                    <span className="prognostic-value">
+                      {prognosticRisk?.prognosis?.next_state_most_likely || '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Follow-up Reminders */}
+            {followUpReminders.length > 0 && (
+              <div className="info-card" style={{ marginBottom: 20 }}>
+                <h3 className="card-title">Follow-up Reminders</h3>
+                <div className="reminders-list">
+                  {followUpReminders.map((reminder, idx) => (
+                    <div key={idx} className="reminder-item">
+                      <span className="reminder-days">{reminder.recommended_days} days</span>
+                      <span className="reminder-reason">{reminder.reason}</span>
+                      <span className="reminder-date">
+                        {formatDate(reminder.created_at)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Severity Summary */}
+            {recordings.length > 0 && (
+              <div className="info-card" style={{ marginBottom: 20 }}>
+                <h3 className="card-title">Severity Summary</h3>
+                <div className="severity-summary">
+                  {recordings.slice(0, 5).map((rec, idx) => {
+                    const severity = getSeverityGrade(rec.prediction, rec.confidence);
+                    const auscultation = rec.auscultation_point ? AUSCULTATION_POINTS[rec.auscultation_point] : null;
+                    return (
+                      <div key={idx} className="severity-item">
+                        <span className="severity-date">
+                          {formatDate(rec.recording_date || rec.created_at)}
+                        </span>
+                        <span 
+                          className="severity-badge"
+                          style={{ 
+                            backgroundColor: severity.bg,
+                            color: severity.color
+                          }}
+                        >
+                          Grade {severity.grade}: {severity.label}
+                        </span>
+                        {auscultation && (
+                          <span 
+                            className="auscultation-badge"
+                            style={{ 
+                              backgroundColor: auscultation.bg,
+                              color: auscultation.color
+                            }}
+                          >
+                            {auscultation.label}
+                          </span>
+                        )}
+                        <span className="severity-confidence">
+                          {rec.confidence ? `${(rec.confidence * 100).toFixed(1)}%` : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Patient Information */}
             <div className="info-card">
               <h3 className="card-title">Patient Information</h3>
               <div className="info-grid">
@@ -360,7 +649,11 @@ const PatientProfile = () => {
                 </div>
               ) : (
                 [...triageRecords, ...recordings]
-                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                  .sort((a, b) => {
+                    const dateA = new Date(a.created_at || a.recording_date || 0);
+                    const dateB = new Date(b.created_at || b.recording_date || 0);
+                    return dateB - dateA;
+                  })
                   .slice(0, 5)
                   .map((item, index) => (
                     <div key={index} className="activity-item">
@@ -372,15 +665,31 @@ const PatientProfile = () => {
                           {item.triage_color ? 'Triage Assessment' : 'Heart Sound Recording'}
                         </span>
                         <span className="activity-date">
-                          {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent'}
+                          {formatDate(item.created_at || item.recording_date)}
                           {item.triage_color && (
                             <span className={`triage-badge ${getRiskBadgeClass(item.triage_color)}`}>
                               {item.triage_color}
                             </span>
                           )}
                           {item.prediction && (
-                            <span className={`triage-badge ${item.prediction === 'RHD' ? 'badge-red' : 'badge-green'}`}>
+                            <span className={`triage-badge ${getPredictionBadge(item.prediction)}`}>
                               {item.prediction}
+                            </span>
+                          )}
+                          {item.confidence && (
+                            <span className="confidence-badge">
+                              {`${(item.confidence * 100).toFixed(1)}%`}
+                            </span>
+                          )}
+                          {item.auscultation_point && (
+                            <span 
+                              className="auscultation-badge-small"
+                              style={{
+                                backgroundColor: AUSCULTATION_POINTS[item.auscultation_point]?.bg || '#f1f5f9',
+                                color: AUSCULTATION_POINTS[item.auscultation_point]?.color || '#94a3b8'
+                              }}
+                            >
+                              {item.auscultation_point}
                             </span>
                           )}
                         </span>
@@ -423,7 +732,7 @@ const PatientProfile = () => {
                   <tbody>
                     {triageRecords.map((triage, index) => (
                       <tr key={index}>
-                        <td>{triage.created_at ? new Date(triage.created_at).toLocaleDateString() : '—'}</td>
+                        <td>{formatDate(triage.created_at)}</td>
                         <td>
                           <span className={`triage-badge ${getRiskBadgeClass(triage.triage_color)}`}>
                             {triage.triage_color || 'Pending'}
@@ -441,23 +750,42 @@ const PatientProfile = () => {
         )}
 
         {/* --- RECORDINGS TAB --- */}
-        // In the recordings tab, ensure it displays properly
-
         {activeTab === 'recordings' && (
           <section className="recordings-section">
             <div className="tab-header">
               <h2>Heart Sound Recordings</h2>
-              <label className="btn-primary btn-upload">
-                + Upload Recording
-                <input
-                  type="file"
-                  accept=".wav,.mp3,.m4a"
-                  onChange={handleFileUpload}
-                  disabled={analyzing}
-                  hidden
+              <div className="tab-actions">
+                <AnatomicalMapTrigger
+                  selectedPoint={selectedAuscultationPoint}
+                  onClick={() => setShowMap(true)}
+                  compact={true}
                 />
-              </label>
+                <label className="btn-primary btn-upload">
+                  + Upload
+                  <input
+                    type="file"
+                    accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
+                    onChange={handleFileUpload}
+                    disabled={analyzing}
+                    hidden
+                  />
+                </label>
+              </div>
             </div>
+
+            {analyzing && (
+              <div className="upload-progress-container">
+                <div className="upload-progress-bar">
+                  <div 
+                    className="upload-progress-fill" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <p className="upload-progress-text">
+                  {uploadProgress < 100 ? 'Uploading and analyzing...' : 'Processing complete!'}
+                </p>
+              </div>
+            )}
 
             {recordings.length === 0 ? (
               <div className="empty-state">
@@ -468,52 +796,90 @@ const PatientProfile = () => {
               </div>
             ) : (
               <div className="recordings-grid">
-                {recordings.map((recording, index) => (
-                  <div key={recording.id || index} className="recording-card">
-                    <div className="recording-header">
-                      <h4>Recording #{index + 1}</h4>
-                      <span className={`triage-badge ${recording.prediction === 'RHD' ? 'badge-red' : 'badge-green'}`}>
-                        {recording.prediction || 'Pending'}
-                      </span>
-                    </div>
-                    <div className="recording-details">
-                      <div className="detail-row">
-                        <span className="detail-label">Date</span>
-                        <span className="detail-value">
-                          {recording.recording_date
-                            ? new Date(recording.recording_date).toLocaleString()
-                            : recording.created_at
-                              ? new Date(recording.created_at).toLocaleString()
-                              : '—'}
-                        </span>
-                      </div>
-                      <div className="detail-row">
-                        <span className="detail-label">Confidence</span>
-                        <span className="detail-value">
-                          {recording.confidence !== null && recording.confidence !== undefined
-                            ? `${(recording.confidence * 100).toFixed(1)}%`
-                            : '—'}
-                        </span>
-                      </div>
-                      <div className="detail-row">
-                        <span className="detail-label">File</span>
-                        <span className="detail-value">{recording.file_name || '—'}</span>
-                      </div>
-                      {recording.notes && (
-                        <div className="detail-row">
-                          <span className="detail-label">Notes</span>
-                          <span className="detail-value">{recording.notes}</span>
+                {recordings.map((recording, index) => {
+                  const severity = getSeverityGrade(recording.prediction, recording.confidence);
+                  const auscultation = recording.auscultation_point ? AUSCULTATION_POINTS[recording.auscultation_point] : null;
+                  return (
+                    <div key={recording.id || index} className="recording-card">
+                      <div className="recording-header">
+                        <h4>Recording #{index + 1}</h4>
+                        <div className="recording-badges">
+                          <span className={`triage-badge ${getPredictionBadge(recording.prediction)}`}>
+                            {recording.prediction || 'Pending'}
+                          </span>
+                          {recording.prediction && recording.prediction !== 'Pending' && (
+                            <span 
+                              className="severity-badge-small"
+                              style={{ 
+                                backgroundColor: severity.bg,
+                                color: severity.color
+                              }}
+                            >
+                              Grade {severity.grade}
+                            </span>
+                          )}
                         </div>
+                      </div>
+                      <div className="recording-details">
+                        <div className="detail-row">
+                          <span className="detail-label">Date</span>
+                          <span className="detail-value">
+                            {formatDate(recording.recording_date || recording.created_at)}
+                          </span>
+                        </div>
+                        <div className="detail-row">
+                          <span className="detail-label">Confidence</span>
+                          <span className="detail-value">
+                            {recording.confidence !== null && recording.confidence !== undefined
+                              ? `${(recording.confidence * 100).toFixed(1)}%`
+                              : '—'}
+                          </span>
+                        </div>
+                        <div className="detail-row">
+                          <span className="detail-label">Severity</span>
+                          <span className="detail-value" style={{ color: severity.color }}>
+                            {severity.label}
+                          </span>
+                        </div>
+                        <div className="detail-row">
+                          <span className="detail-label">Auscultation</span>
+                          <span className="detail-value">
+                            {auscultation ? (
+                              <span 
+                                className="auscultation-badge"
+                                style={{ 
+                                  backgroundColor: auscultation.bg,
+                                  color: auscultation.color,
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {auscultation.label}
+                              </span>
+                            ) : '—'}
+                          </span>
+                        </div>
+                        <div className="detail-row">
+                          <span className="detail-label">File</span>
+                          <span className="detail-value">{recording.file_name || '—'}</span>
+                        </div>
+                        {recording.notes && (
+                          <div className="detail-row">
+                            <span className="detail-label">Notes</span>
+                            <span className="detail-value">{recording.notes}</span>
+                          </div>
+                        )}
+                      </div>
+                      {recording.file_url && (
+                        <audio controls className="audio-player">
+                          <source src={recording.file_url} type="audio/wav" />
+                          Your browser does not support the audio element.
+                        </audio>
                       )}
                     </div>
-                    {recording.file_url && (
-                      <audio controls className="audio-player">
-                        <source src={recording.file_url} type="audio/wav" />
-                        Your browser does not support the audio element.
-                      </audio>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
@@ -526,21 +892,48 @@ const PatientProfile = () => {
               <div className="upload-zone">
                 <h3>AI Heart Sound Analysis</h3>
                 <p>Upload a PCG sample from the IoT stethoscope for automated valvular analysis.</p>
-                <label className="upload-btn">
-                  {analyzing ? 'Analyzing...' : 'Select Audio File'}
-                  <input
-                    type="file"
-                    accept=".wav,.mp3,.m4a"
-                    onChange={handleFileUpload}
-                    disabled={analyzing}
-                    hidden
-                  />
-                </label>
-                {analyzing && (
-                  <div className="analyzing-indicator">
+                
+                <div className="analysis-auscultation-info">
+                  <span className="auscultation-label">Selected Point:</span>
+                  <span 
+                    className="auscultation-value"
+                    style={{
+                      color: AUSCULTATION_POINTS[selectedAuscultationPoint]?.color,
+                      fontWeight: '600'
+                    }}
+                  >
+                    {AUSCULTATION_POINTS[selectedAuscultationPoint]?.label || 'None'}
+                  </span>
+                  <button 
+                    className="btn-change-point"
+                    onClick={() => setShowMap(true)}
+                  >
+                    Change
+                  </button>
+                </div>
+                
+                {analyzing ? (
+                  <div className="analyzing-container">
                     <div className="pulse-loader"></div>
-                    <span>Processing heart sound...</span>
+                    <p>Processing heart sound...</p>
+                    <div className="upload-progress-bar">
+                      <div 
+                        className="upload-progress-fill" 
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                    </div>
+                    <span className="upload-progress-text">{uploadProgress}%</span>
                   </div>
+                ) : (
+                  <label className="upload-btn">
+                    Select Audio File
+                    <input
+                      type="file"
+                      accept=".wav,.mp3,.m4a,audio/wav,audio/mpeg,audio/mp3"
+                      onChange={handleFileUpload}
+                      hidden
+                    />
+                  </label>
                 )}
               </div>
 
@@ -556,6 +949,27 @@ const PatientProfile = () => {
                         ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%`
                         : '—'}
                     </div>
+                    {analysisResult.prediction?.auscultation_label && (
+                      <div className="auscultation-result">
+                        Point: {analysisResult.prediction.auscultation_label}
+                      </div>
+                    )}
+                    {analysisResult.prediction?.severity && (
+                      <div 
+                        className="severity-grade"
+                        style={{ 
+                          backgroundColor: analysisResult.prediction.severity.bg,
+                          color: analysisResult.prediction.severity.color,
+                          padding: '4px 16px',
+                          borderRadius: '20px',
+                          marginTop: '8px',
+                          display: 'inline-block',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Grade {analysisResult.prediction.severity.grade}: {analysisResult.prediction.severity.label}
+                      </div>
+                    )}
                   </div>
                   <div className="analysis-body">
                     <p className="recommendation">
@@ -567,6 +981,98 @@ const PatientProfile = () => {
                     <p className="timestamp">
                       Processed: {new Date(analysisResult.timestamp).toLocaleString()}
                     </p>
+                    {analysisResult.recording_id && (
+                      <p className="recording-id">
+                        Recording ID: {analysisResult.recording_id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* --- PROGNOSIS TAB --- */}
+        {activeTab === 'prognosis' && (
+          <section className="prognosis-section">
+            <div className="prognosis-container">
+              <h2>Prognostic Risk Assessment</h2>
+              
+              {!prognosticRisk ? (
+                <div className="empty-state">
+                  <p>No prognostic data available.</p>
+                  <p style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '8px' }}>
+                    More assessments needed for prognosis calculation.
+                  </p>
+                </div>
+              ) : (
+                <div className="prognosis-card">
+                  <div className="prognosis-header">
+                    <div className="prognosis-score">
+                      <span className="score-label">Risk Score</span>
+                      <span className={`score-value ${prognosticRisk?.prognosis?.risk_level?.toLowerCase() || 'unknown'}`}>
+                        {prognosticRisk?.prognosis?.risk_score || '—'}%
+                      </span>
+                    </div>
+                    <div className="prognosis-level">
+                      <span className="level-label">Risk Level</span>
+                      <span className={`level-value ${prognosticRisk?.prognosis?.risk_level?.toLowerCase() || 'unknown'}`}>
+                        {prognosticRisk?.prognosis?.risk_level || 'Unknown'}
+                      </span>
+                    </div>
+                    <div className="prognosis-confidence">
+                      <span className="confidence-label">Confidence</span>
+                      <span className="confidence-value">
+                        {prognosticRisk?.prognosis?.confidence || '—'}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="prognosis-details">
+                    <div className="detail-section">
+                      <h4>Probabilities</h4>
+                      <div className="probability-bars">
+                        {Object.entries(prognosticRisk?.prognosis?.probabilities || {}).map(([state, prob]) => (
+                          <div key={state} className="probability-item">
+                            <span className="prob-label">{state}</span>
+                            <div className="prob-bar-container">
+                              <div 
+                                className="prob-bar"
+                                style={{ 
+                                  width: `${(prob * 100)}%`,
+                                  backgroundColor: prob > 0.3 ? '#00464F' : '#94a3b8'
+                                }}
+                              />
+                            </div>
+                            <span className="prob-value">{(prob * 100).toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="detail-section">
+                      <h4>Recommendations</h4>
+                      <ul className="recommendation-list">
+                        {prognosticRisk?.prognosis?.recommendations?.map((rec, idx) => (
+                          <li key={idx}>{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="detail-section">
+                      <h4>Next Most Likely State</h4>
+                      <p className="next-state">
+                        {prognosticRisk?.prognosis?.next_state_most_likely || 'Unknown'}
+                      </p>
+                    </div>
+
+                    <div className="detail-section">
+                      <h4>Treatment Effect</h4>
+                      <p className="treatment-effect">
+                        {prognosticRisk?.prognosis?.treatment_effect || '—'}% risk reduction
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
