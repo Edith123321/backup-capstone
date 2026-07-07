@@ -264,11 +264,18 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Find model path
-capstone_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MODEL_PATH = os.path.join(capstone_dir, 'ai_model', 'models', 'mitral_classifier_v4')
+# Find the project root (where ai_model is)
+current_dir = os.path.dirname(os.path.abspath(__file__))  # backend/api/v1/screening
+backend_dir = os.path.dirname(os.path.dirname(current_dir))  # backend
+project_root = os.path.dirname(backend_dir)  # project root (where ai_model lives)
 
-print(f"🔍 Looking for model at: {MODEL_PATH}")
-print(f"📁 Model path exists: {os.path.exists(MODEL_PATH)}")
+MODEL_PATH = os.path.join(project_root, 'ai_model', 'models', 'mitral_classifier_v4')
+
+# Add debug prints
+print(f"🔍 Current dir: {current_dir}")
+print(f"🔍 Backend dir: {backend_dir}")
+print(f"🔍 Project root: {project_root}")
+print(f"🔍 Model path: {MODEL_PATH}")
 
 # Initialize classifier
 classifier = None
