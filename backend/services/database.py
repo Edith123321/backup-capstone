@@ -9,8 +9,15 @@ import uuid
 class DoctorDatabase:
     """Database service for storing doctor information and predictions"""
     
-    def __init__(self, db_path='doctors.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        # Allow the DB location to be pointed at a persistent disk in production.
+        # On Render's free tier the container filesystem is ephemeral, so the
+        # default 'doctors.db' resets on cold start (losing created patients).
+        # Set DATABASE_PATH to a mounted disk (e.g. /var/data/doctors.db) to persist.
+        self.db_path = db_path or os.environ.get('DATABASE_PATH', 'doctors.db')
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
         self.init_db()
     
     def init_db(self):
