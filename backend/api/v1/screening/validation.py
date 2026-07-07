@@ -107,6 +107,7 @@ def predict():
     
     print("❌ No file or JSON found")
     return jsonify({'error': 'No file uploaded'}), 400
+
 # =========================
 # HEALTH CHECK
 # =========================
