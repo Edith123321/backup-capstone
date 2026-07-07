@@ -1,26 +1,21 @@
-/* ========================================
-   PATIENT PROFILE - Main Container
-   ======================================== */
-.patient-profile-container {
+/* frontend_web/src/components/Dashboard/PatientProfile.css */
+
+/* ===========================
+   Patient Profile Layout
+=========================== */
+
+/* .patient-profile-container {
   padding: 24px;
   background: #f8fafc;
   min-height: 100vh;
-  margin-left: 260px;
-  transition: margin-left 0.3s ease;
-  width: calc(100% - 260px);
+  margin-left: 120px;
+} */
+
+.tab-header{
+    margin-top: 30px;
+    margin-left: 30px;
 }
 
-/* ========================================
-   SIDEBAR COLLAPSED STATE
-   ======================================== */
-.sidebar.collapsed ~ .patient-profile-container {
-  margin-left: 70px;
-  width: calc(100% - 70px);
-}
-
-/* ========================================
-   LOADING & ERROR STATES
-   ======================================== */
 .loading-container,
 .error-container {
   display: flex;
@@ -57,32 +52,10 @@
   margin: 0 0 20px 0;
 }
 
-/* ========================================
-   BACK BUTTON
-   ======================================== */
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: none;
-  border: none;
-  color: #00464F;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 20px;
-}
+/* ===========================
+   Header
+=========================== */
 
-.back-btn:hover {
-  color: #005a66;
-  transform: translateX(-4px);
-}
-
-/* ========================================
-   PROFILE HEADER
-   ======================================== */
 .profile-header {
   display: flex;
   justify-content: space-between;
@@ -149,9 +122,10 @@
   flex-wrap: wrap;
 }
 
-/* ========================================
-   BUTTONS
-   ======================================== */
+/* ===========================
+   Buttons
+=========================== */
+
 .btn-primary,
 .btn-secondary {
   display: inline-flex;
@@ -188,9 +162,30 @@
   border-color: #00464F;
 }
 
-/* ========================================
-   TABS
-   ======================================== */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  color: #00464F;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 20px;
+}
+
+.back-btn:hover {
+  color: #005a66;
+  transform: translateX(-4px);
+}
+
+/* ===========================
+   Tabs
+=========================== */
+
 .profile-tabs {
   display: flex;
   gap: 4px;
@@ -199,8 +194,6 @@
   padding: 6px;
   border-radius: 12px;
   border: 1px solid #e8edf2;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .tab {
@@ -213,7 +206,7 @@
   font-size: 0.95rem;
   border-radius: 8px;
   transition: all 0.2s ease;
-  white-space: nowrap;
+  position: relative;
 }
 
 .tab:hover {
@@ -226,9 +219,10 @@
   color: white;
 }
 
-/* ========================================
-   CARDS
-   ======================================== */
+/* ===========================
+   Cards
+=========================== */
+
 .info-card,
 .stat-card,
 .recording-card {
@@ -246,9 +240,10 @@
   box-shadow: 0 4px 16px rgba(0, 70, 79, 0.06);
 }
 
-/* ========================================
-   INFORMATION GRID
-   ======================================== */
+/* ===========================
+   Information Grid
+=========================== */
+
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -279,9 +274,10 @@
   grid-column: 1 / -1;
 }
 
-/* ========================================
-   STATS GRID
-   ======================================== */
+/* ===========================
+   Stats - Brand Colors
+=========================== */
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -292,6 +288,15 @@
 .stat-card {
   text-align: center;
   padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e8edf2;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: #00464F;
+  box-shadow: 0 4px 16px rgba(0, 70, 79, 0.06);
 }
 
 .stat-value {
@@ -308,23 +313,27 @@
   margin-top: 4px;
 }
 
-/* Different stat colors */
+/* Different stat colors for variety */
 .stat-card:nth-child(1) .stat-value {
   color: #00464F;
 }
+
 .stat-card:nth-child(2) .stat-value {
   color: #0D9488;
 }
+
 .stat-card:nth-child(3) .stat-value {
   color: #DC2626;
 }
+
 .stat-card:nth-child(4) .stat-value {
   color: #2563EB;
 }
 
-/* ========================================
-   RECENT ACTIVITY
-   ======================================== */
+/* ===========================
+   Recent Activity
+=========================== */
+
 .recent-activity {
   background: white;
   padding: 24px;
@@ -379,9 +388,10 @@
   font-size: 0.85rem;
 }
 
-/* ========================================
-   BADGES
-   ======================================== */
+/* ===========================
+   Badges - Brand Colors
+=========================== */
+
 .triage-badge,
 .prediction-badge {
   display: inline-flex;
@@ -433,21 +443,20 @@
   color: #dc2626;
 }
 
-/* ========================================
-   TRIAGE TABLE
-   ======================================== */
+/* ===========================
+   Tables
+=========================== */
+
 .triage-table {
   overflow-x: auto;
   background: white;
   border-radius: 12px;
   border: 1px solid #e8edf2;
-  -webkit-overflow-scrolling: touch;
 }
 
 .triage-table table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 600px;
 }
 
 .triage-table th,
@@ -464,7 +473,6 @@
   color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  white-space: nowrap;
 }
 
 .triage-table tbody tr:hover {
@@ -475,9 +483,10 @@
   border-bottom: none;
 }
 
-/* ========================================
-   RECORDINGS
-   ======================================== */
+/* ===========================
+   Recordings
+=========================== */
+
 .recordings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -486,6 +495,15 @@
 
 .recording-card {
   padding: 24px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e8edf2;
+  transition: all 0.2s ease;
+}
+
+.recording-card:hover {
+  border-color: #00464F;
+  box-shadow: 0 4px 16px rgba(0, 70, 79, 0.06);
 }
 
 .recording-header {
@@ -539,9 +557,10 @@
   flex-wrap: wrap;
 }
 
-/* ========================================
-   TAB HEADER
-   ======================================== */
+/* ===========================
+   Tab Header
+=========================== */
+
 .tab-header {
   display: flex;
   justify-content: space-between;
@@ -562,12 +581,12 @@
 .tab-actions {
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-/* ========================================
-   SECTION HEADER
-   ======================================== */
+/* ===========================
+   Section Headers
+=========================== */
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -584,9 +603,10 @@
   font-weight: 600;
 }
 
-/* ========================================
-   EMPTY STATE
-   ======================================== */
+/* ===========================
+   Empty State
+=========================== */
+
 .empty-state {
   text-align: center;
   padding: 40px;
@@ -601,34 +621,23 @@
   margin-top: 16px;
 }
 
-/* ========================================
-   RESPONSIVE BREAKPOINTS
-   ======================================== */
+/* ===========================
+   Responsive
+=========================== */
 
-/* Tablet */
 @media (max-width: 1024px) {
   .patient-profile-container {
-    margin-left: 220px;
     padding: 20px;
-    width: calc(100% - 220px);
   }
 
   .recordings-grid {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
-/* Mobile */
 @media (max-width: 768px) {
   .patient-profile-container {
-    margin-left: 0 !important;
     padding: 16px;
-    padding-top: 80px;
-    width: 100% !important;
   }
 
   .profile-header {
@@ -666,9 +675,9 @@
   }
 
   .profile-tabs {
+    overflow-x: auto;
     padding: 4px;
     gap: 2px;
-    margin-bottom: 24px;
   }
 
   .tab {
@@ -680,7 +689,6 @@
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
-    margin: 24px 0;
   }
 
   .stat-card {
@@ -693,12 +701,10 @@
 
   .info-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
 
   .recordings-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
 
   .tab-header {
@@ -717,18 +723,10 @@
     justify-content: center;
   }
 
-  .triage-table {
-    border-radius: 8px;
-  }
-
   .triage-table th,
   .triage-table td {
     padding: 10px 14px;
     font-size: 0.85rem;
-  }
-
-  .triage-table table {
-    min-width: 500px;
   }
 
   .recording-actions {
@@ -739,31 +737,15 @@
     width: 100%;
     justify-content: center;
   }
-
-  .recording-card {
-    padding: 18px;
-  }
-
-  .section-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .back-btn {
-    margin-bottom: 12px;
-  }
 }
 
-/* Small Mobile */
 @media (max-width: 480px) {
   .patient-profile-container {
     padding: 12px;
-    padding-top: 76px;
   }
 
   .profile-header {
     padding: 16px;
-    margin-bottom: 20px;
   }
 
   .patient-avatar-large {
@@ -776,19 +758,9 @@
     font-size: 1.25rem;
   }
 
-  .patient-meta {
-    font-size: 0.8rem;
-    gap: 4px;
-  }
-
-  .patient-info {
-    gap: 14px;
-  }
-
   .stats-grid {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    margin: 16px 0;
   }
 
   .stat-card {
@@ -799,193 +771,7 @@
     font-size: 1.25rem;
   }
 
-  .stat-label {
-    font-size: 0.75rem;
-  }
-
   .recording-card {
     padding: 16px;
-  }
-
-  .recording-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .recording-details .detail-row {
-    font-size: 0.85rem;
-  }
-
-  .triage-table th,
-  .triage-table td {
-    padding: 8px 12px;
-    font-size: 0.8rem;
-  }
-
-  .triage-table table {
-    min-width: 400px;
-  }
-
-  .tab {
-    padding: 8px 14px;
-    font-size: 0.8rem;
-  }
-
-  .tab-header h2 {
-    font-size: 1.25rem;
-  }
-
-  .info-card,
-  .stat-card,
-  .recording-card {
-    padding: 16px;
-  }
-
-  .info-item .value {
-    font-size: 0.9rem;
-  }
-
-  .btn-primary,
-  .btn-secondary {
-    padding: 8px 16px;
-    font-size: 0.85rem;
-  }
-
-  .activity-item {
-    padding: 10px 0;
-    gap: 12px;
-  }
-
-  .activity-icon {
-    width: 32px;
-    height: 32px;
-  }
-
-  .activity-title {
-    font-size: 0.9rem;
-  }
-
-  .activity-date {
-    font-size: 0.75rem;
-  }
-}
-
-/* Ultra Small Mobile */
-@media (max-width: 360px) {
-  .patient-profile-container {
-    padding: 8px;
-    padding-top: 72px;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .stat-card {
-    padding: 10px;
-  }
-
-  .stat-value {
-    font-size: 1.1rem;
-  }
-
-  .triage-table table {
-    min-width: 320px;
-  }
-
-  .triage-table th,
-  .triage-table td {
-    padding: 6px 10px;
-    font-size: 0.75rem;
-  }
-
-  .tab {
-    padding: 6px 12px;
-    font-size: 0.75rem;
-  }
-
-  .patient-avatar-large {
-    width: 48px;
-    height: 48px;
-    font-size: 1.25rem;
-  }
-
-  .patient-details h1 {
-    font-size: 1.1rem;
-  }
-
-  .recording-card {
-    padding: 12px;
-  }
-}
-
-/* ========================================
-   PRINT STYLES
-   ======================================== */
-@media print {
-  .patient-profile-container {
-    margin: 0 !important;
-    padding: 20px;
-    background: white;
-    width: 100% !important;
-  }
-
-  .profile-header {
-    border: 1px solid #ddd;
-    break-inside: avoid;
-  }
-
-  .btn-primary,
-  .btn-secondary,
-  .back-btn,
-  .profile-actions,
-  .tab-actions,
-  .recording-actions {
-    display: none !important;
-  }
-
-  .profile-tabs {
-    border: 1px solid #ddd;
-  }
-
-  .tab {
-    color: #1a1a2e;
-  }
-
-  .tab.active {
-    background: #00464F;
-    color: white;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .stat-card,
-  .info-card,
-  .recording-card {
-    border: 1px solid #ddd;
-    break-inside: avoid;
-  }
-
-  .triage-table {
-    border: 1px solid #ddd;
-  }
-
-  .triage-table th {
-    background: #f0f0f0 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .badge-red,
-  .badge-orange,
-  .badge-yellow,
-  .badge-green,
-  .badge-blue,
-  .badge-gray,
-  .badge-normal,
-  .badge-abnormal {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
   }
 }
