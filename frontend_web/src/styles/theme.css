@@ -1,0 +1,82 @@
+/* ============================================================
+   SAKA Design Tokens
+   Single source of truth for the dashboard palette, radii,
+   shadows and transitions. Imported globally in main.jsx so
+   the variables are available to every route/component,
+   including PatientProfile which renders outside the dashboard
+   shell. Consolidates the previously-scattered 88 hex colours
+   (two overlapping grey/red/green scales) into one system.
+   ============================================================ */
+
+:root {
+  /* Brand (teal) */
+  --brand: #00464f;
+  --brand-hover: #005a66;
+  --brand-accent: #0d9488;
+
+  /* Neutrals (slate scale) */
+  --text-strong: #0f172a;     /* absorbs #1a1a2e, #2d3748 */
+  --text: #1e293b;
+  --text-secondary: #475569;  /* absorbs #4a5568 */
+  --text-muted: #64748b;      /* absorbs #718096 */
+  --text-faint: #94a3b8;      /* absorbs #a0aec0 */
+  --border: #e2e8f0;          /* absorbs #e5e7eb, #e8edf2, #ddd */
+  --border-strong: #cbd5e1;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafc;  /* absorbs #f7fafc */
+  --surface-muted: #f1f5f9;
+
+  /* Semantic - danger */
+  --danger: #dc2626;          /* absorbs #ef4444, #e53e3e */
+  --danger-dark: #b91c1c;     /* absorbs #9b2c2c */
+  --danger-surface: #fef2f2;  /* absorbs #fff5f5 */
+  --danger-border: #fecaca;   /* absorbs #fc8181 */
+
+  /* Semantic - success */
+  --success: #16a34a;         /* absorbs #22c55e, #48bb78 */
+  --success-dark: #065f46;    /* absorbs #276749, #047857 */
+  --success-surface: #f0fdf4;
+
+  /* Semantic - warning (amber) */
+  --warning: #f59e0b;         /* absorbs #f6ad55, #ecc94b */
+  --warning-dark: #b45309;    /* absorbs #92400e, #854d0e, #744210, #a16207, #c2410c */
+  --warning-surface: #fffbeb; /* absorbs #fefce8, #fff7ed */
+  --warning-border: #fde68a;  /* absorbs #fed7aa */
+
+  /* Semantic - info (blue) */
+  --info: #2563eb;
+  --info-dark: #1d4ed8;
+  --info-surface: #eff6ff;    /* absorbs #ebf4ff, #f0f4ff */
+  --info-border: #bfdbfe;
+  --indigo: #667eea;
+
+  /* Jones triage (semantically distinct — never merged) */
+  --triage-red: #dc2626;
+  --triage-orange: #f97316;
+  --triage-yellow: #eab308;
+  --triage-green: #16a34a;
+  --triage-blue: #3b82f6;
+
+  /* Accents */
+  --accent-purple: #764ba2;
+  --accent-pink: #ec4899;
+  --teal-600: #0f766e;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 50px;
+
+  /* Elevation (teal-tinted, matching existing shadows) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow: 0 2px 8px rgba(0, 70, 79, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 70, 79, 0.10);
+  --shadow-lg: 0 8px 24px rgba(0, 70, 79, 0.12);
+
+  /* Motion */
+  --transition: 0.2s ease;
+  --transition-slow: 0.3s ease;
+}
