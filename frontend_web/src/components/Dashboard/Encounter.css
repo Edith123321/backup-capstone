@@ -8,6 +8,7 @@
   margin-left: 260px;
   transition: margin-left 0.3s ease;
   width: calc(100% - 260px);
+  margin-top: 0%;
 }
 
 /* ========================================
@@ -68,7 +69,7 @@
 .section-header h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #2d3748;
+  color: white;
   margin: 0;
 }
 
