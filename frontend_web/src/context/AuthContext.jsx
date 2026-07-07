@@ -8,7 +8,11 @@ import React, {
 
 const AuthContext = createContext();
 
-const API_BASE_URL = "https://capstone-be-yxzd.onrender.com";
+// Honor VITE_API_URL (baked at build time) with the deployed backend as
+// fallback, matching services/api.js. Strip a trailing /api/v1 if present,
+// since the auth routes below already include the full path.
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://capstone-be-yxzd.onrender.com")
+  .replace(/\/api\/v1\/?$/, "");
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);

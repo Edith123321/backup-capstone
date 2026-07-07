@@ -1,0 +1,47 @@
+# Render Blueprint for the SAKA RHD platform.
+# Backend: Flask API (Gunicorn). Frontend: static React (Vite) build.
+# Secrets (Google OAuth, VITE_API_URL) are set in the Render dashboard.
+
+services:
+  # ---------------- Backend API ----------------
+  - type: web
+    name: saka-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # 1 worker + threads keeps memory low (model + numpy/scipy/matplotlib load
+    # once per worker); --timeout 120 covers audio upload + feature extraction.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      # Set these in the dashboard (sync:false keeps them out of the repo):
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+
+  # ---------------- Frontend (static) ----------------
+  - type: web
+    name: saka-frontend
+    runtime: static
+    rootDir: frontend_web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Baked into the build; point at the backend service URL.
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      # SPA fallback so client-side routes (e.g. /dashboard) don't 404 on refresh.
+      - type: rewrite
+        source: /*
+        destination: /index.html
