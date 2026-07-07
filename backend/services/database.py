@@ -91,6 +91,8 @@ class DoctorDatabase:
                 doctor_id TEXT NOT NULL,
                 recording_data TEXT,
                 file_path TEXT,
+                file_name TEXT,
+                file_url TEXT,
                 duration REAL,
                 frequency_range TEXT,
                 quality_score REAL,
@@ -99,8 +101,12 @@ class DoctorDatabase:
                 probabilities TEXT,
                 rhd_risk_score REAL,
                 rhd_recommendation TEXT,
+                recording_date TIMESTAMP,
+                notes TEXT,
                 recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 analyzed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (patient_id) REFERENCES patients (id),
                 FOREIGN KEY (doctor_id) REFERENCES doctors (id)
             )
@@ -122,11 +128,24 @@ class DoctorDatabase:
             )
         ''')
         
-        # Add RHD status column to existing table if it doesn't exist
+        # Follow-up reminders table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS follow_up_reminders (
+                id TEXT PRIMARY KEY,
+                patient_id TEXT NOT NULL,
+                recommended_days INTEGER,
+                reason TEXT,
+                completed BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (patient_id) REFERENCES patients (id)
+            )
+        ''')
+        
+        # Add missing columns if they don't exist
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_status TEXT DEFAULT 'unknown'")
         except sqlite3.OperationalError:
-            pass  # Column already exists
+            pass
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_diagnosis_date TEXT")
@@ -149,12 +168,37 @@ class DoctorDatabase:
             pass
         
         try:
-            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN rhd_risk_score REAL")
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN file_name TEXT")
         except sqlite3.OperationalError:
             pass
         
         try:
-            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN rhd_recommendation TEXT")
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN file_url TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN notes TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN recording_date TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute("ALTER TABLE triage_records ADD COLUMN triage_score INTEGER")
         except sqlite3.OperationalError:
             pass
         
@@ -181,12 +225,16 @@ class DoctorDatabase:
         except (ValueError, TypeError):
             return default
     
+    def get_connection(self):
+        """Get a database connection"""
+        return sqlite3.connect(self.db_path)
+    
     # ============ DOCTOR METHODS ============
     
     def save_doctor(self, user_data: Dict) -> bool:
         """Save or update doctor information"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -209,7 +257,7 @@ class DoctorDatabase:
     def get_doctor(self, doctor_id: str) -> Optional[Dict]:
         """Get doctor by ID"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM doctors WHERE id = ?', (doctor_id,))
@@ -237,7 +285,7 @@ class DoctorDatabase:
     def update_doctor_profile(self, doctor_id: str, data: Dict) -> bool:
         """Update doctor profile"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -259,7 +307,7 @@ class DoctorDatabase:
         """Create a new patient for a doctor with RHD status"""
         try:
             patient_id = str(uuid.uuid4())[:8]
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Get RHD status or default to 'unknown'
@@ -302,7 +350,7 @@ class DoctorDatabase:
     def update_patient_rhd_status(self, patient_id: str, data: Dict) -> bool:
         """Update patient RHD status and related information"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             rhd_status = data.get('rhd_status', 'unknown')
@@ -338,7 +386,7 @@ class DoctorDatabase:
     def get_patients_by_doctor(self, doctor_id: str) -> List[Dict]:
         """Get all patients for a doctor with RHD status"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -379,7 +427,7 @@ class DoctorDatabase:
     def get_patient_by_id(self, patient_id: str) -> Optional[Dict]:
         """Get a specific patient by ID with RHD status"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM patients WHERE id = ?', (patient_id,))
@@ -416,7 +464,7 @@ class DoctorDatabase:
     def get_patients_by_rhd_status(self, doctor_id: str, rhd_status: str) -> List[Dict]:
         """Get patients filtered by RHD status"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -462,7 +510,7 @@ class DoctorDatabase:
         """Create a new triage record using Jones Triage System"""
         try:
             triage_id = str(uuid.uuid4())[:8]
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Safely convert all numeric values
@@ -625,7 +673,7 @@ class DoctorDatabase:
     def get_triage_by_patient(self, patient_id: str) -> List[Dict]:
         """Get all triage records for a patient"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -669,7 +717,7 @@ class DoctorDatabase:
     def get_triage_by_doctor(self, doctor_id: str) -> List[Dict]:
         """Get all triage records for a doctor"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -723,56 +771,51 @@ class DoctorDatabase:
             print(f"Error getting triage records: {e}")
             return []
     
-    # ============ HEART SOUND RECORDING METHODS WITH RHD ============
+    # ============ HEART SOUND RECORDING METHODS ============
     
     def save_heart_sound_recording(self, doctor_id: str, data: Dict) -> Optional[str]:
-        """Save a heart sound recording from IoT stethoscope with RHD analysis"""
+        """Save a heart sound recording to the database"""
         try:
             recording_id = str(uuid.uuid4())[:8]
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Calculate RHD risk score from prediction confidence
-            prediction = data.get('prediction', '')
-            confidence = self._safe_float(data.get('confidence', 0))
+            # Handle file data if present
+            file_data = data.get('file')
+            file_name = None
+            file_path = None
+            file_url = data.get('file_url')
             
-            rhd_risk_score = 0
-            rhd_recommendation = 'No RHD detected'
+            if file_data:
+                # If it's a file object from Flask
+                if hasattr(file_data, 'filename'):
+                    file_name = file_data.filename
+                elif isinstance(file_data, str):
+                    file_name = file_data
+                    file_path = file_data
             
-            if prediction and 'rhd' in prediction.lower():
-                if confidence > 0.7:
-                    rhd_risk_score = confidence * 100
-                    rhd_recommendation = 'High risk of RHD - Refer to cardiologist'
-                elif confidence > 0.4:
-                    rhd_risk_score = confidence * 50
-                    rhd_recommendation = 'Moderate risk of RHD - Further monitoring required'
-                else:
-                    rhd_risk_score = confidence * 25
-                    rhd_recommendation = 'Low risk of RHD - Monitor symptoms'
+            # Handle recording date
+            recording_date = data.get('recording_date')
+            if not recording_date:
+                recording_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             cursor.execute('''
                 INSERT INTO heart_sound_recordings (
-                    id, patient_id, doctor_id, recording_data, file_path,
-                    duration, frequency_range, quality_score,
-                    prediction, confidence, probabilities,
-                    rhd_risk_score, rhd_recommendation,
-                    analyzed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, patient_id, doctor_id, file_name, file_path, file_url,
+                    prediction, confidence, recording_date, notes,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ''', (
                 recording_id,
                 data.get('patient_id'),
                 doctor_id,
-                data.get('recording_data'),
-                data.get('file_path'),
-                self._safe_float(data.get('duration')),
-                data.get('frequency_range'),
-                self._safe_float(data.get('quality_score')),
-                prediction,
-                confidence,
-                json.dumps(data.get('probabilities', {})),
-                rhd_risk_score,
-                rhd_recommendation,
-                datetime.now().isoformat() if data.get('analyzed') else None
+                file_name,
+                file_path,
+                file_url,
+                data.get('prediction'),
+                data.get('confidence'),
+                recording_date,
+                data.get('notes', '')
             ))
             
             conn.commit()
@@ -780,19 +823,25 @@ class DoctorDatabase:
             return recording_id
             
         except Exception as e:
-            print(f"Error saving recording: {e}")
+            print(f"❌ Error saving recording: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def get_recordings_by_patient(self, patient_id: str) -> List[Dict]:
-        """Get all heart sound recordings for a patient with RHD analysis"""
+        """Get all recordings for a patient"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT * FROM heart_sound_recordings 
-                WHERE patient_id = ? 
-                ORDER BY recorded_at DESC
+                SELECT 
+                    id, patient_id, doctor_id, file_name, file_path, file_url,
+                    prediction, confidence, recording_date, notes,
+                    created_at, updated_at
+                FROM heart_sound_recordings
+                WHERE patient_id = ?
+                ORDER BY created_at DESC
             ''', (patient_id,))
             
             rows = cursor.fetchall()
@@ -804,24 +853,23 @@ class DoctorDatabase:
                     'id': row[0],
                     'patient_id': row[1],
                     'doctor_id': row[2],
-                    'recording_data': row[3],
+                    'file_name': row[3],
                     'file_path': row[4],
-                    'duration': row[5],
-                    'frequency_range': row[6],
-                    'quality_score': row[7],
-                    'prediction': row[8],
-                    'confidence': row[9],
-                    'probabilities': json.loads(row[10]) if row[10] else {},
-                    'rhd_risk_score': row[11] if len(row) > 11 else 0,
-                    'rhd_recommendation': row[12] if len(row) > 12 else None,
-                    'recorded_at': row[13] if len(row) > 13 else None,
-                    'analyzed_at': row[14] if len(row) > 14 else None
+                    'file_url': row[5],
+                    'prediction': row[6],
+                    'confidence': row[7],
+                    'recording_date': row[8],
+                    'notes': row[9],
+                    'created_at': row[10],
+                    'updated_at': row[11]
                 })
             
             return recordings
             
         except Exception as e:
-            print(f"Error getting recordings: {e}")
+            print(f"❌ Error fetching recordings: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
     
     # ============ IOT DEVICE METHODS ============
@@ -830,7 +878,7 @@ class DoctorDatabase:
         """Register an IoT stethoscope device"""
         try:
             device_id = str(uuid.uuid4())[:8]
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -858,7 +906,7 @@ class DoctorDatabase:
     def update_device_status(self, device_id: str, status: str) -> bool:
         """Update IoT device status"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -878,7 +926,7 @@ class DoctorDatabase:
     def get_doctor_devices(self, doctor_id: str) -> List[Dict]:
         """Get all IoT devices for a doctor"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -907,133 +955,137 @@ class DoctorDatabase:
         except Exception as e:
             print(f"Error getting devices: {e}")
             return []
-    # Add to database.py
-
-def update_patient_rhd_from_prediction(self, patient_id: str, prediction: str, confidence: float):
-    """
-    Automatically update patient RHD status based on ML prediction
-    """
-    try:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Determine RHD status from prediction
-        if prediction == 'RHD':
-            if confidence > 0.7:
-                rhd_status = 'suspected'
-                rhd_recommendation = 'High risk - Refer to cardiologist'
-                follow_up_days = 30
-            elif confidence > 0.4:
-                rhd_status = 'suspected'
-                rhd_recommendation = 'Moderate risk - Further monitoring required'
-                follow_up_days = 90
+    
+    # ============ RHD STATS & AUTOMATION METHODS ============
+    
+    def update_patient_rhd_from_prediction(self, patient_id: str, prediction: str, confidence: float) -> bool:
+        """
+        Automatically update patient RHD status based on ML prediction
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Determine RHD status from prediction
+            if prediction == 'RHD':
+                if confidence > 0.7:
+                    rhd_status = 'suspected'
+                    rhd_recommendation = 'High risk - Refer to cardiologist'
+                    follow_up_days = 30
+                elif confidence > 0.4:
+                    rhd_status = 'suspected'
+                    rhd_recommendation = 'Moderate risk - Further monitoring required'
+                    follow_up_days = 90
+                else:
+                    rhd_status = 'suspected'
+                    rhd_recommendation = 'Low risk - Monitor symptoms'
+                    follow_up_days = 180
             else:
-                rhd_status = 'suspected'
-                rhd_recommendation = 'Low risk - Monitor symptoms'
-                follow_up_days = 180
-        else:
-            rhd_status = 'none'
-            rhd_recommendation = 'No RHD detected'
-            follow_up_days = 365  # Routine annual check
-        
-        # Update patient
-        cursor.execute('''
-            UPDATE patients 
-            SET rhd_status = ?,
-                rhd_notes = ?,
-                last_rhd_assessment = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ''', (rhd_status, rhd_recommendation, patient_id))
-        
-        # Create follow-up reminder if RHD suspected
-        if rhd_status == 'suspected':
+                rhd_status = 'none'
+                rhd_recommendation = 'No RHD detected'
+                follow_up_days = 365
+            
+            # Update patient
             cursor.execute('''
-                INSERT INTO follow_up_reminders (
-                    patient_id, recommended_days, reason, created_at
-                ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (patient_id, follow_up_days, rhd_recommendation))
-        
-        conn.commit()
-        conn.close()
-        return True
-        
-    except Exception as e:
-        print(f"Error updating RHD status: {e}")
-        return False
-
-def get_rhd_stats(self, doctor_id: str) -> Dict:
-    """
-    Get RHD statistics for dashboard
-    """
-    try:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Total patients
-        cursor.execute('SELECT COUNT(*) FROM patients WHERE doctor_id = ?', (doctor_id,))
-        total_patients = cursor.fetchone()[0]
-        
-        # RHD breakdown
-        cursor.execute('''
-            SELECT rhd_status, COUNT(*) 
-            FROM patients 
-            WHERE doctor_id = ? AND rhd_status != 'none'
-            GROUP BY rhd_status
-        ''', (doctor_id,))
-        rhd_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Age distribution of RHD cases
-        cursor.execute('''
-            SELECT 
-                CASE 
-                    WHEN age < 15 THEN '5-14'
-                    WHEN age < 25 THEN '15-24'
-                    WHEN age < 35 THEN '25-34'
-                    WHEN age < 45 THEN '35-44'
-                    ELSE '45+'
-                END as age_group,
-                COUNT(*) as count
-            FROM patients 
-            WHERE doctor_id = ? AND rhd_status = 'suspected'
-            GROUP BY age_group
-        ''', (doctor_id,))
-        age_distribution = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        # Recent RHD cases
-        cursor.execute('''
-            SELECT p.name, p.age, p.rhd_status, p.last_rhd_assessment,
-                   t.triage_color
-            FROM patients p
-            LEFT JOIN triage_records t ON p.id = t.patient_id
-            WHERE p.doctor_id = ? AND p.rhd_status = 'suspected'
-            ORDER BY p.last_rhd_assessment DESC
-            LIMIT 10
-        ''', (doctor_id,))
-        recent_cases = []
-        for row in cursor.fetchall():
-            recent_cases.append({
-                'name': row[0],
-                'age': row[1],
-                'status': row[2],
-                'assessment_date': row[3],
-                'triage_color': row[4]
-            })
-        
-        conn.close()
-        
-        return {
-            'total_screened': total_patients,
-            'rhd_suspected': rhd_breakdown.get('suspected', 0),
-            'rhd_confirmed': rhd_breakdown.get('confirmed', 0),
-            'rhd_prevalence': (rhd_breakdown.get('suspected', 0) / total_patients * 100) if total_patients > 0 else 0,
-            'age_distribution': age_distribution,
-            'recent_cases': recent_cases
-        }
-        
-    except Exception as e:
-        print(f"Error getting RHD stats: {e}")
-        return {}
+                UPDATE patients 
+                SET rhd_status = ?,
+                    rhd_notes = ?,
+                    last_rhd_assessment = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (rhd_status, rhd_recommendation, patient_id))
+            
+            # Create follow-up reminder if RHD suspected
+            if rhd_status == 'suspected':
+                reminder_id = str(uuid.uuid4())[:8]
+                cursor.execute('''
+                    INSERT INTO follow_up_reminders (
+                        id, patient_id, recommended_days, reason, created_at
+                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (reminder_id, patient_id, follow_up_days, rhd_recommendation))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error updating RHD status: {e}")
+            return False
+    
+    def get_rhd_stats(self, doctor_id: str) -> Dict:
+        """
+        Get RHD statistics for dashboard
+        """
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Total patients
+            cursor.execute('SELECT COUNT(*) FROM patients WHERE doctor_id = ?', (doctor_id,))
+            total_patients = cursor.fetchone()[0]
+            
+            # RHD breakdown
+            cursor.execute('''
+                SELECT rhd_status, COUNT(*) 
+                FROM patients 
+                WHERE doctor_id = ? 
+                GROUP BY rhd_status
+            ''', (doctor_id,))
+            rhd_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Age distribution of RHD cases
+            cursor.execute('''
+                SELECT 
+                    CASE 
+                        WHEN age < 15 THEN '5-14'
+                        WHEN age < 25 THEN '15-24'
+                        WHEN age < 35 THEN '25-34'
+                        WHEN age < 45 THEN '35-44'
+                        ELSE '45+'
+                    END as age_group,
+                    COUNT(*) as count
+                FROM patients 
+                WHERE doctor_id = ? AND rhd_status IN ('suspected', 'confirmed')
+                GROUP BY age_group
+            ''', (doctor_id,))
+            age_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # Recent RHD cases
+            cursor.execute('''
+                SELECT p.name, p.age, p.rhd_status, p.last_rhd_assessment,
+                       t.triage_color
+                FROM patients p
+                LEFT JOIN triage_records t ON p.id = t.patient_id
+                WHERE p.doctor_id = ? AND p.rhd_status IN ('suspected', 'confirmed')
+                ORDER BY p.last_rhd_assessment DESC
+                LIMIT 10
+            ''', (doctor_id,))
+            recent_cases = []
+            for row in cursor.fetchall():
+                recent_cases.append({
+                    'name': row[0],
+                    'age': row[1],
+                    'status': row[2],
+                    'assessment_date': row[3],
+                    'triage_color': row[4]
+                })
+            
+            conn.close()
+            
+            return {
+                'total_screened': total_patients,
+                'rhd_suspected': rhd_breakdown.get('suspected', 0),
+                'rhd_confirmed': rhd_breakdown.get('confirmed', 0),
+                'rhd_none': rhd_breakdown.get('none', 0),
+                'rhd_unknown': rhd_breakdown.get('unknown', 0),
+                'rhd_prevalence': ((rhd_breakdown.get('suspected', 0) + rhd_breakdown.get('confirmed', 0)) / total_patients * 100) if total_patients > 0 else 0,
+                'age_distribution': age_distribution,
+                'recent_cases': recent_cases
+            }
+            
+        except Exception as e:
+            print(f"Error getting RHD stats: {e}")
+            return {}
 
 # Global database instance
 db = DoctorDatabase()

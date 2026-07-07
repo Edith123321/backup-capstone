@@ -28,7 +28,7 @@ const PatientProfile = () => {
   // ============================================
   // 3. EFFECTS
   // ============================================
-  
+
   // Reset state when patient ID changes
   useEffect(() => {
     setPatient(null);
@@ -45,7 +45,7 @@ const PatientProfile = () => {
 
     try {
       const data = await patientService.getPatientDetails(id);
-      
+
       if (data?.patient) {
         setPatient(data.patient);
         setTriageRecords(data.triage || []);
@@ -69,23 +69,41 @@ const PatientProfile = () => {
   // ============================================
   // 4. HANDLERS
   // ============================================
-  
+
+  // In PatientProfile.jsx, update the handleAnalyzeHeartSound function
+
   const handleAnalyzeHeartSound = async (file) => {
     if (!file) return;
-    
+
     setAnalyzing(true);
     setAnalysisResult(null);
 
     try {
-      const result = await screeningService.predict(file);
-      
+      // Pass patient_id and doctor_id to save recording automatically
+      const result = await screeningService.predict(
+        file,
+        id,  // patient_id from URL
+        user?.doctor_id || user?.id  // doctor_id from auth
+      );
+
+      console.log('Analysis result:', result);
+
       setAnalysisResult({
-        prediction: result,
-        timestamp: new Date().toISOString()
+        prediction: {
+          prediction: result.prediction || result.class || 'Unknown',
+          confidence: result.confidence || 0,
+          prob_normal: result.prob_normal || 0,
+          prob_rhd: result.prob_rhd || 0
+        },
+        timestamp: new Date().toISOString(),
+        recording_id: result.recording_id
       });
 
+      // Refresh patient data to show new recording
       await fetchPatientData();
+
     } catch (err) {
+      console.error('Analysis error:', err);
       alert(`Analysis failed: ${err.message}`);
     } finally {
       setAnalyzing(false);
@@ -102,7 +120,7 @@ const PatientProfile = () => {
   // ============================================
   // 5. HELPERS
   // ============================================
-  
+
   const getRHDStatusDisplay = (status) => {
     const statusMap = {
       'confirmed': { label: 'Confirmed RHD', color: '#dc2626', bg: '#fee2e2' },
@@ -127,7 +145,7 @@ const PatientProfile = () => {
   // ============================================
   // 6. RENDER: LOADING
   // ============================================
-  
+
   if (authLoading || (loading && !patient)) {
     return (
       <div className="profile-loading">
@@ -140,7 +158,7 @@ const PatientProfile = () => {
   // ============================================
   // 7. RENDER: ERROR
   // ============================================
-  
+
   if (error) {
     return (
       <div className="error-container">
@@ -162,18 +180,18 @@ const PatientProfile = () => {
   // ============================================
   // 8. RENDER: MAIN
   // ============================================
-  
+
   if (!patient) return null;
 
   const rhdStatus = getRHDStatusDisplay(patient.rhd_status || 'unknown');
   const totalEncounters = triageRecords.length + recordings.length;
-  const abnormalResults = triageRecords.filter(t => 
+  const abnormalResults = triageRecords.filter(t =>
     t.triage_color === 'Red' || t.triage_color === 'Orange'
   ).length;
 
   return (
     <div className="patient-profile-container">
-      
+
       {/* ========== HEADER ========== */}
       <header className="profile-header">
         <div className="patient-info">
@@ -195,8 +213,8 @@ const PatientProfile = () => {
                 <strong>Gender:</strong> {patient.gender || 'Not specified'}
               </span>
               <span className="meta-divider">|</span>
-              <span 
-                className="status-indicator" 
+              <span
+                className="status-indicator"
                 style={{ color: rhdStatus.color }}
               >
                 ● {rhdStatus.label}
@@ -204,31 +222,31 @@ const PatientProfile = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="profile-actions">
-          <button 
-            className="btn-secondary" 
+          <button
+            className="btn-secondary"
             onClick={() => navigate('/patients')}
           >
             ← Back
           </button>
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={() => navigate(`/patient/${id}/triage/new`)}
           >
             + New Triage
           </button>
           <label className="btn-primary btn-upload">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
+              <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             Analyze Sound
-            <input 
-              type="file" 
-              accept=".wav,.mp3,.m4a" 
+            <input
+              type="file"
+              accept=".wav,.mp3,.m4a"
               onChange={handleFileUpload}
               disabled={analyzing}
-              hidden 
+              hidden
             />
           </label>
         </div>
@@ -236,25 +254,25 @@ const PatientProfile = () => {
 
       {/* ========== TABS ========== */}
       <nav className="profile-tabs">
-        <button 
+        <button
           className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
           Overview
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === 'encounters' ? 'active' : ''}`}
           onClick={() => setActiveTab('encounters')}
         >
           Encounters ({totalEncounters})
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === 'recordings' ? 'active' : ''}`}
           onClick={() => setActiveTab('recordings')}
         >
           Recordings ({recordings.length})
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
           onClick={() => setActiveTab('analysis')}
         >
@@ -264,7 +282,7 @@ const PatientProfile = () => {
 
       {/* ========== TAB CONTENT ========== */}
       <div className="tab-content">
-        
+
         {/* --- OVERVIEW TAB --- */}
         {activeTab === 'overview' && (
           <section className="overview-section">
@@ -288,7 +306,7 @@ const PatientProfile = () => {
                 <span className="stat-label">RHD Status</span>
               </div>
             </div>
-            
+
             <div className="info-card">
               <h3 className="card-title">Patient Information</h3>
               <div className="info-grid">
@@ -379,14 +397,14 @@ const PatientProfile = () => {
           <section className="encounters-section">
             <div className="tab-header">
               <h2>Triage Encounters</h2>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={() => navigate(`/patient/${id}/triage/new`)}
               >
                 + New Triage
               </button>
             </div>
-            
+
             {triageRecords.length === 0 ? (
               <div className="empty-state">
                 <p>No triage records found for this patient.</p>
@@ -423,18 +441,20 @@ const PatientProfile = () => {
         )}
 
         {/* --- RECORDINGS TAB --- */}
+        // In the recordings tab, ensure it displays properly
+
         {activeTab === 'recordings' && (
           <section className="recordings-section">
             <div className="tab-header">
               <h2>Heart Sound Recordings</h2>
               <label className="btn-primary btn-upload">
                 + Upload Recording
-                <input 
-                  type="file" 
-                  accept=".wav,.mp3,.m4a" 
+                <input
+                  type="file"
+                  accept=".wav,.mp3,.m4a"
                   onChange={handleFileUpload}
                   disabled={analyzing}
-                  hidden 
+                  hidden
                 />
               </label>
             </div>
@@ -442,11 +462,14 @@ const PatientProfile = () => {
             {recordings.length === 0 ? (
               <div className="empty-state">
                 <p>No heart sound recordings available.</p>
+                <p style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '8px' }}>
+                  Upload a recording using the button above to get AI analysis.
+                </p>
               </div>
             ) : (
               <div className="recordings-grid">
                 {recordings.map((recording, index) => (
-                  <div key={index} className="recording-card">
+                  <div key={recording.id || index} className="recording-card">
                     <div className="recording-header">
                       <h4>Recording #{index + 1}</h4>
                       <span className={`triage-badge ${recording.prediction === 'RHD' ? 'badge-red' : 'badge-green'}`}>
@@ -457,19 +480,36 @@ const PatientProfile = () => {
                       <div className="detail-row">
                         <span className="detail-label">Date</span>
                         <span className="detail-value">
-                          {recording.created_at ? new Date(recording.created_at).toLocaleDateString() : '—'}
+                          {recording.recording_date
+                            ? new Date(recording.recording_date).toLocaleString()
+                            : recording.created_at
+                              ? new Date(recording.created_at).toLocaleString()
+                              : '—'}
                         </span>
                       </div>
                       <div className="detail-row">
                         <span className="detail-label">Confidence</span>
                         <span className="detail-value">
-                          {recording.confidence ? `${(recording.confidence * 100).toFixed(1)}%` : '—'}
+                          {recording.confidence !== null && recording.confidence !== undefined
+                            ? `${(recording.confidence * 100).toFixed(1)}%`
+                            : '—'}
                         </span>
                       </div>
+                      <div className="detail-row">
+                        <span className="detail-label">File</span>
+                        <span className="detail-value">{recording.file_name || '—'}</span>
+                      </div>
+                      {recording.notes && (
+                        <div className="detail-row">
+                          <span className="detail-label">Notes</span>
+                          <span className="detail-value">{recording.notes}</span>
+                        </div>
+                      )}
                     </div>
                     {recording.file_url && (
                       <audio controls className="audio-player">
                         <source src={recording.file_url} type="audio/wav" />
+                        Your browser does not support the audio element.
                       </audio>
                     )}
                   </div>
@@ -488,12 +528,12 @@ const PatientProfile = () => {
                 <p>Upload a PCG sample from the IoT stethoscope for automated valvular analysis.</p>
                 <label className="upload-btn">
                   {analyzing ? 'Analyzing...' : 'Select Audio File'}
-                  <input 
-                    type="file" 
-                    accept=".wav,.mp3,.m4a" 
+                  <input
+                    type="file"
+                    accept=".wav,.mp3,.m4a"
                     onChange={handleFileUpload}
                     disabled={analyzing}
-                    hidden 
+                    hidden
                   />
                 </label>
                 {analyzing && (
@@ -512,16 +552,16 @@ const PatientProfile = () => {
                       {analysisResult.prediction?.prediction || 'Unknown'}
                     </div>
                     <div className="confidence-score">
-                      Confidence: {analysisResult.prediction?.confidence 
-                        ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%` 
+                      Confidence: {analysisResult.prediction?.confidence
+                        ? `${(analysisResult.prediction.confidence * 100).toFixed(1)}%`
                         : '—'}
                     </div>
                   </div>
                   <div className="analysis-body">
                     <p className="recommendation">
-                      <strong>Recommendation:</strong> 
-                      {analysisResult.prediction?.prediction === 'RHD' 
-                        ? ' Immediate referral for specialist echocardiography recommended.' 
+                      <strong>Recommendation:</strong>
+                      {analysisResult.prediction?.prediction === 'RHD'
+                        ? ' Immediate referral for specialist echocardiography recommended.'
                         : ' Findings normal. Schedule routine follow-up in 12 months.'}
                     </p>
                     <p className="timestamp">
