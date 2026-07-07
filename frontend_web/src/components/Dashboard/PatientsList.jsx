@@ -1,5 +1,5 @@
 // frontend_web/src/components/Dashboard/PatientsList.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { databaseApi } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -13,13 +13,31 @@ const PatientsList = () => {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [isMobile, setIsMobile] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     male: 0,
     female: 0,
     children: 0
   });
+
+  // Check if mobile view
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+      // Adjust items per page for mobile
+      if (window.innerWidth < 768) {
+        setItemsPerPage(5);
+      } else {
+        setItemsPerPage(10);
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     if (user?.id) {
@@ -60,8 +78,14 @@ const PatientsList = () => {
     setCurrentPage(1);
   };
 
+  // Navigate to patient profile
   const handleViewPatient = (patientId) => {
     navigate(`/patient/${patientId}`);
+  };
+
+  // Handle mobile card click
+  const handlePatientCardClick = (patientId) => {
+    handleViewPatient(patientId);
   };
 
   const handleNewPatient = () => {
@@ -77,13 +101,24 @@ const PatientsList = () => {
     return 'Elderly';
   };
 
+  const getRHDStatusDisplay = (status) => {
+    const statusMap = {
+      'confirmed': { label: 'Confirmed RHD', color: '#dc2626', bg: '#fee2e2' },
+      'suspected': { label: 'Suspected RHD', color: '#f59e0b', bg: '#fed7aa' },
+      'none': { label: 'No RHD', color: '#22c55e', bg: '#dcfce7' },
+      'unknown': { label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' }
+    };
+    return statusMap[status] || statusMap.unknown;
+  };
+
   // Filter patients
   const filteredPatients = patients.filter(patient => {
     const searchLower = searchTerm.toLowerCase();
     return (
       patient.name?.toLowerCase().includes(searchLower) ||
       patient.contact?.includes(searchTerm) ||
-      patient.address?.toLowerCase().includes(searchLower)
+      patient.address?.toLowerCase().includes(searchLower) ||
+      patient.id?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -207,25 +242,121 @@ const PatientsList = () => {
         </div>
       </div>
 
-      {/* Search and Table */}
-      <div className="patients-table-wrapper">
-        <div className="table-toolbar">
-          <div className="search-wrapper">
-            <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search patients by name, contact, or address..."
-              value={searchTerm}
-              onChange={handleSearch}
-            />
-          </div>
-          <span className="patient-count">{filteredPatients.length} patients found</span>
+      {/* Search */}
+      <div className="table-toolbar">
+        <div className="search-wrapper">
+          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            className="search-input"
+            placeholder={isMobile ? "Search patients..." : "Search patients by name, contact, or address..."}
+            value={searchTerm}
+            onChange={handleSearch}
+          />
         </div>
+        <span className="patient-count">{filteredPatients.length} patients found</span>
+      </div>
 
+      {/* Mobile View - Cards */}
+      {isMobile ? (
+        <div className="patients-mobile-grid">
+          {currentPatients.length === 0 ? (
+            <div className="empty-state-mobile">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <p>{searchTerm ? 'No patients match your search' : 'No patients found'}</p>
+              {!searchTerm && (
+                <button className="btn-primary" onClick={handleNewPatient}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Add Your First Patient
+                </button>
+              )}
+            </div>
+          ) : (
+            currentPatients.map((patient) => {
+              const rhdStatus = getRHDStatusDisplay(patient.rhd_status);
+              return (
+                <div 
+                  key={patient.id} 
+                  className="patient-card-mobile"
+                  onClick={() => handlePatientCardClick(patient.id)}
+                >
+                  <div className="patient-card-header">
+                    <div className="patient-avatar">
+                      {patient.name?.charAt(0) || 'P'}
+                    </div>
+                    <div className="patient-card-name">
+                      <h3>{patient.name || 'Unnamed Patient'}</h3>
+                      <span className="patient-id">ID: {patient.id}</span>
+                    </div>
+                    <span 
+                      className="rhd-status-badge"
+                      style={{ 
+                        backgroundColor: rhdStatus.bg,
+                        color: rhdStatus.color 
+                      }}
+                    >
+                      {rhdStatus.label}
+                    </span>
+                  </div>
+                  
+                  <div className="patient-card-details">
+                    <div className="detail-item">
+                      <span className="detail-label">Age</span>
+                      <span className="detail-value">{patient.age || '—'} years</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Gender</span>
+                      <span className={`gender-badge gender-${patient.gender?.toLowerCase() || 'unknown'}`}>
+                        {patient.gender || 'Unknown'}
+                      </span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Contact</span>
+                      <span className="detail-value">{patient.contact || '—'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Address</span>
+                      <span className="detail-value address-truncate">{patient.address || '—'}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Age Group</span>
+                      <span className="age-group-badge">{getAgeGroup(patient.age)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="patient-card-actions">
+                    <button 
+                      className="btn-view-mobile"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewPatient(patient.id);
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      View Profile
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        /* Desktop View - Table */
         <div className="table-container">
           <table className="patients-table">
             <thead>
@@ -261,87 +392,117 @@ const PatientsList = () => {
                   </td>
                 </tr>
               ) : (
-                currentPatients.map((patient) => (
-                  <tr key={patient.id}>
-                    <td>
-                      <div className="patient-name">
-                        <div className="patient-avatar">
-                          {patient.name?.charAt(0) || 'P'}
+                currentPatients.map((patient) => {
+                  const rhdStatus = getRHDStatusDisplay(patient.rhd_status);
+                  return (
+                    <tr key={patient.id}>
+                      <td>
+                        <div className="patient-name">
+                          <div className="patient-avatar">
+                            {patient.name?.charAt(0) || 'P'}
+                          </div>
+                          <div>
+                            <span>{patient.name || 'Unnamed Patient'}</span>
+                            {patient.rhd_status && (
+                              <span 
+                                className="rhd-status-dot"
+                                style={{ 
+                                  backgroundColor: rhdStatus.color,
+                                  display: 'inline-block',
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  marginLeft: '8px'
+                                }}
+                              />
+                            )}
+                          </div>
                         </div>
-                        <span>{patient.name || 'Unnamed Patient'}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="age-badge">{patient.age || '—'}</span>
-                      {patient.age && (
-                        <span className="age-group-badge">{getAgeGroup(patient.age)}</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`gender-badge gender-${patient.gender?.toLowerCase() || 'unknown'}`}>
-                        {patient.gender || 'Unknown'}
-                      </span>
-                    </td>
-                    <td>{patient.contact || '—'}</td>
-                    <td className="address-cell">{patient.address || '—'}</td>
-                    <td className="text-center">
-                      <button
-                        className="btn-view"
-                        onClick={() => handleViewPatient(patient.id)}
-                        title="View Patient"
-                      >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                          <circle cx="12" cy="12" r="3"/>
-                        </svg>
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td>
+                        <span className="age-badge">{patient.age || '—'}</span>
+                        {patient.age && (
+                          <span className="age-group-badge">{getAgeGroup(patient.age)}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`gender-badge gender-${patient.gender?.toLowerCase() || 'unknown'}`}>
+                          {patient.gender || 'Unknown'}
+                        </span>
+                      </td>
+                      <td>{patient.contact || '—'}</td>
+                      <td className="address-cell">{patient.address || '—'}</td>
+                      <td className="text-center">
+                        <button
+                          className="btn-view"
+                          onClick={() => handleViewPatient(patient.id)}
+                          title="View Patient"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                          </svg>
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+      )}
 
-        {/* Pagination */}
-        {filteredPatients.length > 0 && (
-          <div className="pagination">
-            <div className="pagination-info">
-              Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredPatients.length)} of {filteredPatients.length} patients
-            </div>
-            <div className="pagination-controls">
-              <button
-                className="pagination-btn"
-                onClick={() => paginate(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i + 1}
-                  className={`pagination-btn ${currentPage === i + 1 ? 'active' : ''}`}
-                  onClick={() => paginate(i + 1)}
-                >
-                  {i + 1}
-                </button>
-              ))}
-              <button
-                className="pagination-btn"
-                onClick={() => paginate(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-            </div>
+      {/* Pagination */}
+      {filteredPatients.length > 0 && (
+        <div className="pagination">
+          <div className="pagination-info">
+            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredPatients.length)} of {filteredPatients.length} patients
           </div>
-        )}
-      </div>
+          <div className="pagination-controls">
+            <button
+              className="pagination-btn"
+              onClick={() => paginate(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  className={`pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                  onClick={() => paginate(pageNum)}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              className="pagination-btn"
+              onClick={() => paginate(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
