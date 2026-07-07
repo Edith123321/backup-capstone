@@ -4,6 +4,8 @@ import { databaseApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import './DashboardLayout.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com';
+
 const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSelectedPatient }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -12,6 +14,11 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
   const [file, setFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
+  
+  // Prediction states
+  const [prediction, setPrediction] = useState(null);
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [predictionError, setPredictionError] = useState('');
   
   const [formData, setFormData] = useState({
     patient_id: preSelectedPatient?.id || '',
@@ -39,8 +46,11 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
     if (selectedFile) {
       // Validate file type
       const validTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/ogg'];
-      if (!validTypes.includes(selectedFile.type)) {
-        setError('Please upload a valid audio file (WAV, MP3, or OGG)');
+      const validExtensions = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
+      const fileExtension = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'));
+      
+      if (!validTypes.includes(selectedFile.type) && !validExtensions.includes(fileExtension)) {
+        setError('Please upload a valid audio file (WAV, MP3, OGG, FLAC, or M4A)');
         return;
       }
       
@@ -53,6 +63,55 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       setFile(selectedFile);
       setError('');
       setSuccess(false);
+      setPrediction(null);
+      setPredictionError('');
+    }
+  };
+
+  // Run prediction on the uploaded file
+  const analyzeHeartSound = async () => {
+    if (!file) {
+      setPredictionError('Please select a file first');
+      return;
+    }
+
+    setIsPredicting(true);
+    setPredictionError('');
+    setPrediction(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/screening/predict`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setPrediction({
+          class: result.prediction,
+          confidence: result.confidence,
+          probabilities: result.probabilities,
+          visualization: result.visualization
+        });
+        
+        // If RHD detected with high confidence, show alert
+        if (result.prediction === 'RHD' && result.confidence > 0.5) {
+          setPredictionError(`⚠️ RHD detected with ${(result.confidence * 100).toFixed(1)}% confidence`);
+        } else if (result.prediction === 'RHD') {
+          setPredictionError(`⚠️ RHD suspected with ${(result.confidence * 100).toFixed(1)}% confidence - Further review recommended`);
+        }
+      } else {
+        setPredictionError(result.error || 'Failed to analyze heart sound');
+      }
+    } catch (error) {
+      console.error('Prediction error:', error);
+      setPredictionError('Failed to connect to prediction service');
+    } finally {
+      setIsPredicting(false);
     }
   };
 
@@ -69,6 +128,15 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       return;
     }
 
+    // Run prediction first if not already done
+    if (!prediction && !isPredicting) {
+      await analyzeHeartSound();
+      // If prediction failed, don't proceed with upload
+      if (!prediction && predictionError) {
+        return;
+      }
+    }
+
     setLoading(true);
     setError('');
     setSuccess(false);
@@ -82,6 +150,19 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       uploadData.append('recording_date', formData.recording_date);
       uploadData.append('notes', formData.notes);
       uploadData.append('file', file);
+      
+      // Add prediction data if available
+      if (prediction) {
+        uploadData.append('prediction', prediction.class);
+        uploadData.append('confidence', String(prediction.confidence));
+        uploadData.append('probabilities', JSON.stringify(prediction.probabilities));
+        uploadData.append('rhd_risk_score', String((prediction.probabilities?.RHD || 0) * 100));
+        uploadData.append('rhd_recommendation', 
+          prediction.class === 'RHD' 
+            ? `RHD detected with ${(prediction.confidence * 100).toFixed(1)}% confidence - Refer to cardiologist`
+            : 'No RHD detected - Continue routine monitoring'
+        );
+      }
 
       // Use XMLHttpRequest for actual progress tracking
       const response = await new Promise((resolve, reject) => {
@@ -92,7 +173,6 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           if (event.lengthComputable) {
             const progress = Math.round((event.loaded / event.total) * 100);
             setUploadProgress(progress);
-            console.log(`Upload progress: ${progress}%`);
           }
         });
 
@@ -119,7 +199,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         });
 
         // Open and send the request
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+        const apiUrl = import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com';
         xhr.open('POST', `${apiUrl}/api/v1/database/recordings`);
         xhr.withCredentials = true;
         
@@ -142,6 +222,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         
         // Reset form after successful upload
         setFile(null);
+        setPrediction(null);
         setFormData({
           patient_id: preSelectedPatient?.id || '',
           recording_date: new Date().toISOString().split('T')[0],
@@ -159,7 +240,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         // Close modal after delay
         setTimeout(() => {
           onClose();
-        }, 1500);
+        }, 3000);
       } else {
         setError(response?.error || 'Failed to upload recording');
         setUploadProgress(0);
@@ -178,6 +259,9 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
     setError('');
     setSuccess(false);
     setUploadProgress(0);
+    setPrediction(null);
+    setPredictionError('');
+    setIsPredicting(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -204,7 +288,17 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         {success && (
           <div className="modal-success">
             <span className="success-icon">✓</span>
-            Recording uploaded successfully!
+            <div>
+              <div>Recording uploaded successfully!</div>
+              {prediction && (
+                <div className={`prediction-badge-small ${prediction.class === 'RHD' ? 'rhd' : 'normal'}`}>
+                  {prediction.class === 'RHD' ? '⚠️ RHD Detected' : '✅ Normal Heart Sound'}
+                  <span className="confidence-small">
+                    {(prediction.confidence * 100).toFixed(1)}% confidence
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -251,7 +345,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept=".wav,.mp3,.ogg,audio/*"
+                  accept=".wav,.mp3,.ogg,.flac,.m4a,audio/*"
                   required
                   className="file-input"
                   disabled={loading || success}
@@ -267,12 +361,98 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
                   ) : (
                     <div className="file-placeholder">
                       <span>Click or drag to upload audio file</span>
-                      <span className="file-hint">Supported: WAV, MP3, OGG (Max 50MB)</span>
+                      <span className="file-hint">Supported: WAV, MP3, OGG, FLAC, M4A (Max 50MB)</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* Prediction Section */}
+            {file && !prediction && !isPredicting && !success && (
+              <div className="form-group prediction-action">
+                <button
+                  type="button"
+                  className="btn-predict"
+                  onClick={analyzeHeartSound}
+                  disabled={loading || success}
+                >
+                  🔬 Analyze for RHD
+                </button>
+                <span className="form-hint">Run AI analysis to detect RHD</span>
+              </div>
+            )}
+
+            {isPredicting && (
+              <div className="predicting-indicator">
+                <div className="spinner"></div>
+                <span>Analyzing heart sound for RHD...</span>
+              </div>
+            )}
+
+            {predictionError && (
+              <div className={`prediction-error ${predictionError.includes('RHD') ? 'rhd-warning' : ''}`}>
+                <span className="error-icon">⚠️</span>
+                {predictionError}
+              </div>
+            )}
+
+            {prediction && !success && (
+              <div className="prediction-result">
+                <div className={`prediction-banner ${prediction.class === 'RHD' ? 'rhd' : 'normal'}`}>
+                  <div className="prediction-icon">
+                    {prediction.class === 'RHD' ? '🫀' : '💚'}
+                  </div>
+                  <div className="prediction-info">
+                    <div className="prediction-label">
+                      {prediction.class === 'RHD' ? 'RHD DETECTED' : 'NORMAL HEART SOUND'}
+                    </div>
+                    <div className="prediction-confidence">
+                      {(prediction.confidence * 100).toFixed(1)}% confidence
+                    </div>
+                  </div>
+                </div>
+
+                <div className="prediction-probabilities">
+                  <div className="prob-bar">
+                    <span className="prob-label">Normal</span>
+                    <div className="prob-track">
+                      <div 
+                        className="prob-fill normal"
+                        style={{ width: `${((prediction.probabilities?.Normal || 0) * 100).toFixed(1)}%` }}
+                      />
+                    </div>
+                    <span className="prob-value">
+                      {((prediction.probabilities?.Normal || 0) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="prob-bar">
+                    <span className="prob-label">RHD</span>
+                    <div className="prob-track">
+                      <div 
+                        className="prob-fill rhd"
+                        style={{ width: `${((prediction.probabilities?.RHD || 0) * 100).toFixed(1)}%` }}
+                      />
+                    </div>
+                    <span className="prob-value">
+                      {((prediction.probabilities?.RHD || 0) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+
+                {prediction.class === 'RHD' && (
+                  <div className="rhd-recommendation">
+                    <span className="recommendation-icon">📋</span>
+                    <span>
+                      {prediction.confidence > 0.7 
+                        ? 'High risk RHD detected. Immediate cardiology referral recommended.'
+                        : 'RHD suspected. Further evaluation by cardiologist recommended.'
+                      }
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {(uploadProgress > 0 || loading) && (
               <div className="upload-progress">
@@ -313,7 +493,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
             <button 
               type="submit" 
               className="btn-primary" 
-              disabled={loading || !file || !formData.patient_id || success}
+              disabled={loading || !file || !formData.patient_id || success || isPredicting}
             >
               {loading ? 'Uploading...' : success ? 'Uploaded!' : 'Upload Recording'}
             </button>
