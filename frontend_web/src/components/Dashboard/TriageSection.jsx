@@ -369,7 +369,7 @@ const TriageSection = ({ triageRecords = [], onRefresh, onPatientSelect }) => {
           {localTriage.map((patient) => {
             const severity = patient.patient_id ? severityResults[patient.patient_id] : null;
             const prognosis = patient.patient_id ? prognosticRisks[patient.patient_id] : null;
-            const reminders = patient.patient_id ? followUpReminders[patient.patient_id] : [];
+            const reminders = (patient.patient_id ? followUpReminders[patient.patient_id] : []) || [];
             
             return (
               <div 
