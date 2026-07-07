@@ -7,8 +7,19 @@ import uuid
 from werkzeug.utils import secure_filename
 from services.database import db
 
-# Import your classifier from heart_sound
-from api.v1.screening.heart_sound import classifier, allowed_file, ALLOWED_EXTENSIONS
+# Try to import from heart_sound, but handle gracefully if it fails
+try:
+    from api.v1.screening.heart_sound import classifier, allowed_file, ALLOWED_EXTENSIONS
+    CLASSIFIER_AVAILABLE = classifier is not None
+    print(f"✅ HeartSoundClassifier imported successfully. Available: {CLASSIFIER_AVAILABLE}")
+except ImportError as e:
+    print(f"⚠️ Could not import from heart_sound: {e}")
+    classifier = None
+    CLASSIFIER_AVAILABLE = False
+    ALLOWED_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'aiff'}
+    
+    def allowed_file(filename):
+        return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 encounter_bp = Blueprint('encounter', __name__)
 
@@ -22,6 +33,8 @@ def create_encounter():
         return jsonify({}), 200
     
     try:
+        print("🔍 Encounter endpoint called")
+        
         # Parse request
         if request.is_json:
             data = request.get_json()
@@ -29,6 +42,7 @@ def create_encounter():
             patient_data = data.get('patient', {})
             triage_data = data.get('triage', {})
             audio_file = None
+            print(f"📋 JSON request: doctor_id={doctor_id}")
         else:
             # Multipart form
             doctor_id = request.form.get('doctor_id')
@@ -45,6 +59,7 @@ def create_encounter():
                 triage_data = {}
             
             audio_file = request.files.get('file') if 'file' in request.files else None
+            print(f"📋 Form request: doctor_id={doctor_id}, audio_file={audio_file.filename if audio_file else 'None'}")
         
         if not doctor_id:
             return jsonify({'error': 'doctor_id required'}), 400
@@ -56,9 +71,11 @@ def create_encounter():
             patient_id = db.create_patient(doctor_id, patient_data)
             if not patient_id:
                 return jsonify({'error': 'Failed to create patient'}), 500
+        print(f"✅ Patient ID: {patient_id}")
         
         # === STEP 2: Calculate Jones Triage ===
         triage_score, triage_level, triage_color = db.calculate_jones_triage(triage_data)
+        print(f"✅ Triage: {triage_level} ({triage_color}) - Score: {triage_score}")
         
         # Create triage record
         triage_record_data = {
@@ -79,6 +96,8 @@ def create_encounter():
         }
         
         if audio_file and audio_file.filename != '':
+            print(f"🎵 Processing audio: {audio_file.filename}")
+            
             # Check if file type is allowed
             if not allowed_file(audio_file.filename):
                 return jsonify({
@@ -95,7 +114,8 @@ def create_encounter():
             
             try:
                 # Use your classifier from heart_sound.py
-                if classifier is not None:
+                if CLASSIFIER_AVAILABLE and classifier is not None:
+                    print("🧠 Running ML prediction...")
                     result = classifier.predict(filepath, return_all=True)
                     
                     if result:
@@ -109,6 +129,7 @@ def create_encounter():
                             'visualization': result.get('visualization'),
                             'top_features': result.get('top_features', [])
                         }
+                        print(f"✅ ML Result: {ml_result['prediction']} ({ml_result['confidence']:.2f})")
                         
                         # Save recording to database
                         recording_data = {
@@ -119,27 +140,26 @@ def create_encounter():
                                 'Normal': result['prob_normal'],
                                 'RHD': result['prob_rhd']
                             },
-                            'file_path': None,  # We don't store the file permanently
-                            'duration': 0,  # Could extract from audio
-                            'quality_score': 0.8  # Default if not calculated
+                            'file_path': None,
+                            'duration': 0,
+                            'quality_score': 0.8
                         }
                         db.save_heart_sound_recording(doctor_id, recording_data)
+                    else:
+                        print("⚠️ ML prediction returned None")
                 else:
-                    # Classifier not loaded - return error but still save triage
-                    return jsonify({
-                        'error': 'ML Classifier not loaded. Please check model files.',
-                        'partial_success': True,
-                        'patient_id': patient_id,
-                        'triage': {
-                            'level': triage_level,
-                            'color': triage_color,
-                            'score': triage_score
-                        }
-                    }), 503
+                    print("⚠️ Classifier not available - skipping ML prediction")
+                    ml_result = {
+                        'prediction': 'Unavailable',
+                        'confidence': 0,
+                        'probabilities': {'Normal': 0, 'RHD': 0},
+                        'error': 'Classifier not loaded'
+                    }
                     
             except Exception as e:
                 print(f"❌ Audio processing error: {str(e)}")
-                # Continue without ML prediction
+                import traceback
+                traceback.print_exc()
                 ml_result = {
                     'prediction': 'Error',
                     'confidence': 0,
@@ -150,6 +170,7 @@ def create_encounter():
                 # Clean up temp file
                 if os.path.exists(filepath):
                     os.unlink(filepath)
+                    print(f"🗑️ Temp file cleaned up: {filepath}")
         
         # === STEP 4: Auto-update RHD Status ===
         rhd_detected = False
@@ -157,12 +178,17 @@ def create_encounter():
         
         if ml_result.get('prediction') == 'RHD' and ml_result.get('confidence', 0) > 0.3:
             rhd_detected = True
+            print(f"🫀 RHD detected with confidence {ml_result.get('confidence', 0):.2f}")
+            
             # Update patient RHD status
-            db.update_patient_rhd_from_prediction(
-                patient_id,
-                ml_result['prediction'],
-                ml_result['confidence']
-            )
+            try:
+                db.update_patient_rhd_from_prediction(
+                    patient_id,
+                    ml_result['prediction'],
+                    ml_result['confidence']
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to update RHD status: {e}")
             
             # Set follow-up days based on confidence
             if ml_result['confidence'] > 0.7:
@@ -203,6 +229,7 @@ def create_encounter():
             'message': '✅ Encounter completed successfully!'
         }
         
+        print("✅ Returning response")
         return jsonify(response)
         
     except Exception as e:
