@@ -907,6 +907,133 @@ class DoctorDatabase:
         except Exception as e:
             print(f"Error getting devices: {e}")
             return []
+    # Add to database.py
+
+def update_patient_rhd_from_prediction(self, patient_id: str, prediction: str, confidence: float):
+    """
+    Automatically update patient RHD status based on ML prediction
+    """
+    try:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Determine RHD status from prediction
+        if prediction == 'RHD':
+            if confidence > 0.7:
+                rhd_status = 'suspected'
+                rhd_recommendation = 'High risk - Refer to cardiologist'
+                follow_up_days = 30
+            elif confidence > 0.4:
+                rhd_status = 'suspected'
+                rhd_recommendation = 'Moderate risk - Further monitoring required'
+                follow_up_days = 90
+            else:
+                rhd_status = 'suspected'
+                rhd_recommendation = 'Low risk - Monitor symptoms'
+                follow_up_days = 180
+        else:
+            rhd_status = 'none'
+            rhd_recommendation = 'No RHD detected'
+            follow_up_days = 365  # Routine annual check
+        
+        # Update patient
+        cursor.execute('''
+            UPDATE patients 
+            SET rhd_status = ?,
+                rhd_notes = ?,
+                last_rhd_assessment = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (rhd_status, rhd_recommendation, patient_id))
+        
+        # Create follow-up reminder if RHD suspected
+        if rhd_status == 'suspected':
+            cursor.execute('''
+                INSERT INTO follow_up_reminders (
+                    patient_id, recommended_days, reason, created_at
+                ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (patient_id, follow_up_days, rhd_recommendation))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"Error updating RHD status: {e}")
+        return False
+
+def get_rhd_stats(self, doctor_id: str) -> Dict:
+    """
+    Get RHD statistics for dashboard
+    """
+    try:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Total patients
+        cursor.execute('SELECT COUNT(*) FROM patients WHERE doctor_id = ?', (doctor_id,))
+        total_patients = cursor.fetchone()[0]
+        
+        # RHD breakdown
+        cursor.execute('''
+            SELECT rhd_status, COUNT(*) 
+            FROM patients 
+            WHERE doctor_id = ? AND rhd_status != 'none'
+            GROUP BY rhd_status
+        ''', (doctor_id,))
+        rhd_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # Age distribution of RHD cases
+        cursor.execute('''
+            SELECT 
+                CASE 
+                    WHEN age < 15 THEN '5-14'
+                    WHEN age < 25 THEN '15-24'
+                    WHEN age < 35 THEN '25-34'
+                    WHEN age < 45 THEN '35-44'
+                    ELSE '45+'
+                END as age_group,
+                COUNT(*) as count
+            FROM patients 
+            WHERE doctor_id = ? AND rhd_status = 'suspected'
+            GROUP BY age_group
+        ''', (doctor_id,))
+        age_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        # Recent RHD cases
+        cursor.execute('''
+            SELECT p.name, p.age, p.rhd_status, p.last_rhd_assessment,
+                   t.triage_color
+            FROM patients p
+            LEFT JOIN triage_records t ON p.id = t.patient_id
+            WHERE p.doctor_id = ? AND p.rhd_status = 'suspected'
+            ORDER BY p.last_rhd_assessment DESC
+            LIMIT 10
+        ''', (doctor_id,))
+        recent_cases = []
+        for row in cursor.fetchall():
+            recent_cases.append({
+                'name': row[0],
+                'age': row[1],
+                'status': row[2],
+                'assessment_date': row[3],
+                'triage_color': row[4]
+            })
+        
+        conn.close()
+        
+        return {
+            'total_screened': total_patients,
+            'rhd_suspected': rhd_breakdown.get('suspected', 0),
+            'rhd_confirmed': rhd_breakdown.get('confirmed', 0),
+            'rhd_prevalence': (rhd_breakdown.get('suspected', 0) / total_patients * 100) if total_patients > 0 else 0,
+            'age_distribution': age_distribution,
+            'recent_cases': recent_cases
+        }
+        
+    except Exception as e:
+        print(f"Error getting RHD stats: {e}")
+        return {}
 
 # Global database instance
 db = DoctorDatabase()

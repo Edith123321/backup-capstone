@@ -20,6 +20,7 @@ if backend_dir not in sys.path:
 from api.v1.screening.heart_sound import heart_sound_bp
 from api.v1.screening.database_routes import database_bp
 from api.v1.screening.validation import validation_bp
+from api.v1.screening.encounter_routes import encounter_bp
 from api.v1.auth.google_auth import auth_bp
 from api.v1.auth.test_auth import test_auth_bp
 
@@ -37,7 +38,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 Session(app)
 
 # =========================
-# CORS CONFIGURATION - SIMPLIFIED (ONLY ONE)
+# CORS CONFIGURATION
 # =========================
 allowed_origins = [
     "http://localhost:5173",
@@ -45,7 +46,6 @@ allowed_origins = [
     "https://backup-capstone-mbq6.onrender.com",
 ]
 
-# ONLY use Flask-CORS, no manual handlers
 CORS(
     app,
     origins=allowed_origins,
@@ -59,95 +59,65 @@ CORS(
 # =========================
 # BLUEPRINT REGISTRATION
 # =========================
+# Screening endpoints
 app.register_blueprint(heart_sound_bp, url_prefix="/api/v1/screening")
-app.register_blueprint(database_bp, url_prefix="/api/v1/database")
 app.register_blueprint(validation_bp, url_prefix="/api/v1/screening")
+app.register_blueprint(encounter_bp, url_prefix="/api/v1")
+
+# Database endpoints
+app.register_blueprint(database_bp, url_prefix="/api/v1/database")
+
+# Authentication endpoints
 app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
 app.register_blueprint(test_auth_bp, url_prefix="/api/v1/auth/test")
 
-print("✅ Blueprints registered successfully")
+print("✅ SAKA Blueprints registered successfully")
 
 # =========================
-# ROOT
+# ROOT - API Information
 # =========================
 @app.route("/")
 def index():
     return jsonify({
+        "name": "SAKA Clinical Decision Support System",
+        "version": "1.0.0",
         "status": "running",
-        "routes": {
-            "login": "/api/v1/auth/google/login",
-            "callback": "/api/v1/auth/google/callback",
-            "patients": "/api/v1/database/patients",
-            "triage": "/api/v1/database/triage/doctor/<id>",
-            "validate": "/api/v1/screening/validate",
-            "predict": "/api/v1/screening/predict"
+        "endpoints": {
+            "auth": {
+                "login": "/api/v1/auth/google/login",
+                "callback": "/api/v1/auth/google/callback",
+                "debug": "/api/v1/auth/debug"
+            },
+            "encounter": {
+                "create": "/api/v1/encounter",
+                "patients": "/api/v1/database/patients",
+                "triage": "/api/v1/database/triage/doctor/<doctor_id>"
+            },
+            "screening": {
+                "predict": "/api/v1/screening/predict",
+                "validate": "/api/v1/screening/validate",
+                "health": "/api/v1/screening/health"
+            },
+            "stats": {
+                "rhd": "/api/v1/database/stats/rhd?doctor_id=<doctor_id>"
+            },
+            "system": {
+                "health": "/health",
+                "cors_test": "/api/test-cors"
+            }
         }
     })
+
 # =========================
-# PREDICT DIRECT ENDPOINT (FALLBACK)
-# =========================
-@app.route("/api/v1/screening/predict", methods=['POST', 'OPTIONS'])
-@app.route("/predict", methods=['POST', 'OPTIONS'])
-def predict_fallback():
-    """Direct predict endpoint - fallback if blueprint doesn't work"""
-    if request.method == 'OPTIONS':
-        return jsonify({}), 200
-    
-    try:
-        # Handle JSON data
-        if request.is_json:
-            data = request.get_json()
-            if data:
-                return jsonify({
-                    'success': True,
-                    'prediction': {
-                        'condition': 'Normal',
-                        'confidence': 0.92,
-                        'recommendations': ['Regular checkup recommended'],
-                        'based_on': 'direct_fallback'
-                    },
-                    'data_received': data,
-                    'source': 'direct_fallback_json'
-                })
-        
-        # Handle file upload
-        if 'file' in request.files and request.files.get('file'):
-            file = request.files.get('file')
-            if not file or file.filename == '':
-                return jsonify({'error': 'No file provided'}), 400
-            
-            file_data = file.read()
-            file_size = len(file_data)
-            
-            return jsonify({
-                'success': True,
-                'prediction': {
-                    'condition': 'Normal',
-                    'confidence': 0.95,
-                    'recommendations': ['No action needed', 'Continue monitoring'],
-                    'based_on': 'direct_fallback'
-                },
-                'file_name': file.filename,
-                'file_size': file_size,
-                'source': 'direct_fallback_file'
-            })
-        
-        # Handle empty
-        return jsonify({
-            'success': True,
-            'message': 'Predict endpoint reached (no data)',
-            'source': 'direct_fallback_empty'
-        })
-        
-    except Exception as e:
-        print(f"❌ Predict fallback error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-# =========================
-# HEALTH
+# HEALTH CHECK
 # =========================
 @app.route("/health")
 def health():
-    return jsonify({"status": "healthy"})
+    return jsonify({
+        "status": "healthy",
+        "service": "SAKA CDSS",
+        "version": "1.0.0"
+    })
 
 # =========================
 # CORS TEST ENDPOINT
@@ -156,6 +126,7 @@ def health():
 def test_cors():
     """Test endpoint to verify CORS is working"""
     return jsonify({
+        "success": True,
         "message": "CORS is working!",
         "origin": request.headers.get('Origin'),
         "method": request.method
@@ -168,22 +139,21 @@ def test_cors():
 def not_found(e):
     return jsonify({
         "error": "Endpoint not found",
-        "hint": "Check blueprint registration or URL prefix"
+        "hint": "Check the / endpoint for available routes"
     }), 404
 
 @app.errorhandler(500)
 def server_error(e):
-    return jsonify({"error": "Internal server error"}), 500
+    return jsonify({
+        "error": "Internal server error",
+        "message": str(e)
+    }), 500
 
 # =========================
-# MAIN - FIXED FOR RENDER
+# MAIN
 # =========================
 if __name__ == "__main__":
-    # Get port from environment variable or default to 5001
     port = int(os.environ.get("PORT", 5001))
-    
-    # For Render, we need to bind to 0.0.0.0
-    # debug=False is important for production
     app.run(
         host="0.0.0.0", 
         port=port, 
