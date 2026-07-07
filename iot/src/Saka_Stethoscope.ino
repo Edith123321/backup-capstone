@@ -78,7 +78,18 @@ void setup() {
 void loop() {
     // Handle WebSocket clients
     webSocket.loop();
-    
+
+    // Apply any command received over BLE (START/STOP streaming).
+    uint8_t bleCmd = bleHandler.consumeCommand();
+    if (bleCmd == 1) {
+        isRecording = true;
+        lastAudioRead = millis();
+        DEBUG_PRINTLN("🎙️ BLE: recording started");
+    } else if (bleCmd == 2) {
+        isRecording = false;
+        DEBUG_PRINTLN("⏹️ BLE: recording stopped");
+    }
+
     // Process audio if recording
     if (isRecording) {
         processAudio();
