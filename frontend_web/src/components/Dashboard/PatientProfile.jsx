@@ -1,14 +1,13 @@
 // frontend_web/src/components/Dashboard/PatientProfile.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { patientService } from '../../services/api'; // Adjust path as needed
+import { useParams, useNavigate } from 'react-router-dom';
+import { patientService } from '../../services/api';
 import './PatientProfile.css';
 
-const PatientProfile = ({ 
-  patientId,  // Changed from 'patient' to 'patientId'
-  onBack, 
-  onNewTriage, 
-  onNewRecording 
-}) => {
+const PatientProfile = () => {
+  const { patientId } = useParams();
+  const navigate = useNavigate();
+  
   const [patient, setPatient] = useState(null);
   const [triageRecords, setTriageRecords] = useState([]);
   const [recordings, setRecordings] = useState([]);
@@ -30,9 +29,13 @@ const PatientProfile = ({
       
       const data = await patientService.getPatientDetails(patientId);
       
-      setPatient(data.patient);
-      setTriageRecords(data.triage || []);
-      setRecordings(data.recordings || []);
+      if (data.patient) {
+        setPatient(data.patient);
+        setTriageRecords(data.triage || []);
+        setRecordings(data.recordings || []);
+      } else {
+        setError('Patient not found');
+      }
       
     } catch (err) {
       console.error('Error fetching patient data:', err);
@@ -46,63 +49,24 @@ const PatientProfile = ({
     fetchPatientData();
   }, [fetchPatientData]);
 
+  // Handle back navigation
+  const handleBack = () => {
+    navigate('/patients');
+  };
+
   // Handle refresh
   const handleRefresh = () => {
     fetchPatientData();
   };
 
-  if (loading) {
-    return (
-      <div className="profile-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading patient profile...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="error-container">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <h3>Error Loading Patient</h3>
-        <p>{error}</p>
-        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-          <button className="btn-primary" onClick={handleRefresh}>Try Again</button>
-          <button className="btn-secondary" onClick={onBack}>Back to Patients</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!patient) {
-    return (
-      <div className="error-container">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <h3>Patient Not Found</h3>
-        <p>The patient you're looking for doesn't exist.</p>
-        <button className="btn-primary" onClick={onBack}>Back to Patients</button>
-      </div>
-    );
-  }
-
+  // Handle new triage
   const handleNewTriage = () => {
-    if (onNewTriage) {
-      onNewTriage(patient.id); // Pass patient ID to parent
-    }
+    navigate(`/patient/${patientId}/triage/new`);
   };
 
+  // Handle new recording
   const handleNewRecording = () => {
-    if (onNewRecording) {
-      onNewRecording(patient.id); // Pass patient ID to parent
-    }
+    navigate(`/patient/${patientId}/recording/new`);
   };
 
   // Calculate stats
@@ -115,13 +79,74 @@ const PatientProfile = ({
   // Get RHD status display
   const getRHDStatusDisplay = (status) => {
     const statusMap = {
-      'confirmed': { label: 'Confirmed RHD', color: '#dc2626' },
-      'suspected': { label: 'Suspected RHD', color: '#f59e0b' },
-      'none': { label: 'No RHD', color: '#22c55e' },
-      'unknown': { label: 'Unknown', color: '#94a3b8' }
+      'confirmed': { label: 'Confirmed RHD', color: '#dc2626', bg: '#fee2e2' },
+      'suspected': { label: 'Suspected RHD', color: '#f59e0b', bg: '#fed7aa' },
+      'none': { label: 'No RHD', color: '#22c55e', bg: '#dcfce7' },
+      'unknown': { label: 'Unknown', color: '#94a3b8', bg: '#f1f5f9' }
     };
     return statusMap[status] || statusMap.unknown;
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="profile-loading">
+        <div className="loading-spinner"></div>
+        <p>Loading patient profile...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="error-container">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <h3>Error Loading Patient</h3>
+        <p>{error}</p>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
+          <button className="btn-primary" onClick={handleRefresh}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Try Again
+          </button>
+          <button className="btn-secondary" onClick={handleBack}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            Back to Patients
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Patient not found
+  if (!patient) {
+    return (
+      <div className="error-container">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <h3>Patient Not Found</h3>
+        <p>The patient you're looking for doesn't exist or may have been removed.</p>
+        <button className="btn-primary" onClick={handleBack}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Back to Patients
+        </button>
+      </div>
+    );
+  }
 
   const rhdStatus = getRHDStatusDisplay(patient.rhd_status || 'unknown');
 
@@ -149,7 +174,7 @@ const PatientProfile = ({
           </div>
         </div>
         <div className="profile-actions">
-          <button className="btn-secondary" onClick={onBack}>
+          <button className="btn-secondary" onClick={handleBack}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
@@ -285,7 +310,7 @@ const PatientProfile = ({
                 </div>
               </div>
             ) : (
-              // Show recent triage records
+              // Show recent triage records and recordings
               [...triageRecords, ...recordings]
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .slice(0, 5)
