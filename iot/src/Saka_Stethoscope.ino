@@ -6,16 +6,19 @@
 #include "Config.h"
 #include "I2S_Manager.h"
 #include "BLE_Handler.h"
+#include "SignalQuality.h"
 
 // ==================== GLOBAL OBJECTS ====================
 I2S_Manager i2sManager;
 BLE_Handler bleHandler;
 WebSocketsServer webSocket = WebSocketsServer(WS_PORT);
+SignalQuality sqaMonitor;   // on-device signal quality (see SignalQuality.h)
 
 // ==================== GLOBAL VARIABLES ====================
 bool isRecording = false;
 bool isConnected = false;
 unsigned long lastAudioRead = 0;
+unsigned long lastQualityReport = 0;   // last on-device SQA broadcast (ms)
 const unsigned long AUDIO_READ_INTERVAL = 50; // ms
 
 // Audio buffer
@@ -84,9 +87,13 @@ void loop() {
     if (bleCmd == 1) {
         isRecording = true;
         lastAudioRead = millis();
+        sqaMonitor.reset();                 // start fresh quality assessment
+        lastQualityReport = millis();
         DEBUG_PRINTLN("🎙️ BLE: recording started");
     } else if (bleCmd == 2) {
         isRecording = false;
+        String sqaFinal = sqaMonitor.toJson(true);         // final quality summary
+        webSocket.broadcastTXT(sqaFinal);
         DEBUG_PRINTLN("⏹️ BLE: recording stopped");
     }
 
@@ -161,15 +168,21 @@ void handleCommand(const String& command, const String& params) {
     if (command == "START_RECORDING") {
         isRecording = true;
         lastAudioRead = millis();
+        sqaMonitor.reset();                 // start fresh quality assessment
+        lastQualityReport = millis();
         DEBUG_PRINTLN("🎙️ Recording started");
-        
+
         String response = "{\"status\":\"recording\",\"sample_rate\":" + String(SAMPLE_RATE) + ",\"bits\":16}";
         webSocket.broadcastTXT(response);
-        
+
     } else if (command == "STOP_RECORDING") {
         isRecording = false;
         DEBUG_PRINTLN("⏹️ Recording stopped");
-        
+
+        // Broadcast the final on-device quality summary (enforces min-duration).
+        String sqaFinal = sqaMonitor.toJson(true);
+        webSocket.broadcastTXT(sqaFinal);
+
         String response = "{\"status\":\"idle\",\"message\":\"Recording stopped\"}";
         webSocket.broadcastTXT(response);
         
@@ -190,7 +203,17 @@ void processAudio() {
     if (samplesRead > 0) {
         // Calculate RMS for activity detection
         float rms = i2sManager.getRMS(audioBuffer, samplesRead);
-        
+
+        // On-device Signal Quality Assessment — feed every captured chunk and
+        // broadcast a live quality report roughly once a second so the nurse
+        // gets instant "too faint / no heartbeat / clipping" feedback.
+        sqaMonitor.feed(audioBuffer, samplesRead, SAMPLE_RATE);
+        if (millis() - lastQualityReport >= SQA_REPORT_INTERVAL_MS) {
+            String sqaLive = sqaMonitor.toJson(false);
+            webSocket.broadcastTXT(sqaLive);
+            lastQualityReport = millis();
+        }
+
         // If audio is detected, send to clients
         if (rms > RMS_THRESHOLD) {
             // Send audio data to WebSocket clients
@@ -214,6 +237,21 @@ void sendAudioToClients(int16_t* data, size_t length) {
 }
 
 // ==================== DEVICE STATUS ====================
+// ==================== BATTERY MONITOR (Scenario 8) ====================
+// Read the battery level as a 0-100 percentage from the ADC divider. Averaged
+// over a few samples to smooth ADC noise. Returns 100 if no divider is wired.
+int readBatteryPercent() {
+    const int samples = 8;
+    uint32_t acc = 0;
+    for (int i = 0; i < samples; i++) {
+        acc += analogReadMilliVolts(BATTERY_ADC_PIN);
+    }
+    uint32_t mv = (acc / samples) * BATTERY_DIVIDER;   // undo the divider
+    if (mv <= BATTERY_MIN_MV) return 0;
+    if (mv >= BATTERY_MAX_MV) return 100;
+    return (int)(100.0 * (mv - BATTERY_MIN_MV) / (BATTERY_MAX_MV - BATTERY_MIN_MV));
+}
+
 String getDeviceStatus() {
     DynamicJsonDocument doc(512);
     doc["device"] = "Saka Stethoscope";
@@ -223,7 +261,14 @@ String getDeviceStatus() {
     doc["channels"] = NUM_CHANNELS;
     doc["ble_connected"] = bleHandler.isConnected();
     doc["clients"] = webSocket.connectedClients();
-    
+
+    // Scenario 8 — Device Health telemetry so the dashboard can show a
+    // battery/signal status bar and block recording on a dying battery.
+    int battery = readBatteryPercent();
+    doc["battery_percent"] = battery;
+    doc["battery_low"] = battery < BATTERY_CRITICAL_PERCENT;
+    doc["rssi"] = WiFi.RSSI();   // signal strength (dBm)
+
     String output;
     serializeJson(doc, output);
     return output;

@@ -39,11 +39,37 @@
 #define RMS_THRESHOLD       0.02                 // RMS threshold for detection
 #define MIN_SIGNAL_DURATION 0.5                  // Minimum signal duration (seconds)
 
+// ==================== ON-DEVICE SIGNAL QUALITY (SQA) ====================
+// First line of defense: cheap running checks on the ESP32 so a garbage/silent/
+// clipped/too-short recording is caught at the source, before it is streamed and
+// before the backend gate ever sees it. Mirrors backend signal_quality.py.
+// NOTE: conservative defaults — re-calibrate with tools/calibrate_sqa.py against
+// real field recordings.
+#define SQA_FAINT_RMS         0.0032f            // linear RMS ≈ -50 dBFS -> "too faint"
+#define SQA_CLIP_LEVEL        0.98f              // |sample| above this counts as clipping
+#define SQA_CLIP_RATIO_WARN   0.02f              // >2% clipped samples -> "clipping/jitter"
+#define SQA_MIN_DURATION_S    5.0f               // below this -> "too short" (matches backend)
+#define SQA_SUBFRAME_MS       20                 // beat-detector analysis window (ms)
+#define SQA_BEAT_FACTOR       2.2f               // subframe RMS must exceed baseline * this
+#define SQA_BEAT_REFRACT_MS   250                // min gap between beats (=> max 240 BPM)
+#define SQA_MIN_BEATS         3                  // fewer than this over the clip -> "no heartbeat"
+#define SQA_REPORT_INTERVAL_MS 1000              // how often to broadcast a live quality report
+
 // ==================== LED INDICATORS ====================
 #define LED_BUILTIN         2                    // Built-in LED
 #define LED_WIFI            4                    // WiFi status LED
 #define LED_BLE             5                    // BLE status LED
 #define LED_AUDIO           18                   // Audio activity LED
+
+// ==================== BATTERY MONITOR (Scenario 8: Device Health) ====================
+// A low battery makes BLE jitter / drop packets, corrupting the audio with
+// clicks that can look like murmurs. We report battery so the dashboard can
+// grey out the Record button below BATTERY_CRITICAL_PERCENT.
+#define BATTERY_ADC_PIN     GPIO_NUM_34          // ADC1 pin on a resistor divider
+#define BATTERY_MIN_MV      3300                 // ~empty LiPo (per cell) at divider tap
+#define BATTERY_MAX_MV      4200                 // ~full LiPo
+#define BATTERY_DIVIDER     2.0                  // 2:1 resistor divider ratio
+#define BATTERY_CRITICAL_PERCENT 15              // below this, block recording
 
 // ==================== FEATURE FLAGS ====================
 #define ENABLE_BLE          true

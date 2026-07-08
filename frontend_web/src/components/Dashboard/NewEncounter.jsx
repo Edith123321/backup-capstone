@@ -453,6 +453,9 @@ const NewEncounter = () => {
           prediction: result.ml_prediction,
           severity: severity,
           recommendation: result.recommendation,
+          // Human-centered additions:
+          signalQuality: result.signal_quality || null,      // scenarios 1,2,3,5,6
+          clinicalOverride: result.clinical_override || null, // scenario 7
           followUpNeeded: result.rhd_status?.requires_follow_up || false,
           followUpDays: result.rhd_status?.follow_up_days || null,
           auscultation: result.auscultation,
@@ -461,10 +464,13 @@ const NewEncounter = () => {
 
         setShowReportButton(true);
 
-        // Navigate to patient after 5 seconds
-        setTimeout(() => {
-          navigate(`/patient/${result.patient_id}`);
-        }, 5000);
+        // Navigate to patient after 5 seconds — but NOT when a clinical
+        // red-flag override is active; the nurse must read and act on it first.
+        if (!result.clinical_override?.active) {
+          setTimeout(() => {
+            navigate(`/patient/${result.patient_id}`);
+          }, 5000);
+        }
       } else {
         throw new Error(result.error || 'Failed to save encounter');
       }
@@ -1017,6 +1023,52 @@ const NewEncounter = () => {
           <ErrorIcon />
           <span>{error}</span>
           <button onClick={() => setError(null)}><CloseIcon /></button>
+        </div>
+      )}
+
+      {/* Scenario 7 — Clinical red-flag override. Rendered ABOVE the success
+          message so a high-risk-but-AI-normal conflict can never be missed. */}
+      {encounterResult?.clinicalOverride?.active && (
+        <div className="clinical-override">
+          <div className="clinical-override-title">
+            {encounterResult.clinicalOverride.title}
+          </div>
+          <div className="clinical-override-message">
+            {encounterResult.clinicalOverride.message}
+          </div>
+          {encounterResult.clinicalOverride.action && (
+            <div className="clinical-override-message" style={{ marginTop: 6, fontWeight: 600 }}>
+              → {encounterResult.clinicalOverride.action}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Signal Quality feedback for the encounter audio (scenarios 1,2,3,5,6) */}
+      {encounterResult?.signalQuality?.blocked && (
+        <div className="sqa-block">
+          <div className="sqa-block-header">
+            <span className="sqa-block-icon">🚫</span>
+            <span className="sqa-block-title">{encounterResult.signalQuality.title}</span>
+          </div>
+          <p className="sqa-block-message">{encounterResult.signalQuality.message}</p>
+          <p className="sqa-block-hint">
+            The triage was saved, but the AI heart analysis was skipped — please re-record the heart sound.
+          </p>
+        </div>
+      )}
+      {!encounterResult?.signalQuality?.blocked &&
+        encounterResult?.signalQuality?.warnings?.length > 0 && (
+        <div className="sqa-warnings">
+          {encounterResult.signalQuality.warnings.map((w, i) => (
+            <div key={i} className="sqa-warning">
+              <span className="sqa-warning-icon">⚠️</span>
+              <div>
+                <div className="sqa-warning-title">{w.title}</div>
+                <div className="sqa-warning-message">{w.message}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
