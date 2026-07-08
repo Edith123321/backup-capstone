@@ -308,7 +308,28 @@ class DoctorDatabase:
     def get_connection(self):
         """Get a database connection (Turso in production, SQLite locally)."""
         return self._connect()
-    
+
+    def _ensure_doctor(self, conn, doctor_id, email=None, name=None):
+        """
+        Guarantee a doctors row exists so FK constraints pass.
+
+        The Google auth flow issues a JWT but never persists the doctor, and
+        Turso/libSQL ENFORCES foreign keys (local SQLite silently ignored them),
+        so inserting a patient/recording/triage for an unknown doctor_id fails
+        with 'FOREIGN KEY constraint failed'. This upserts a minimal doctors row
+        (idempotent); a later real login can fill in name/email/picture.
+        """
+        if not doctor_id:
+            return
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT OR IGNORE INTO doctors (id, email, name) VALUES (?, ?, ?)",
+                (doctor_id, email or f"{doctor_id}@saka.local", name or "SAKA Clinician"),
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            print(f"⚠️ _ensure_doctor failed for {doctor_id}: {e}")
+
     # ============ DOCTOR METHODS ============
     
     def save_doctor(self, user_data: Dict) -> bool:
@@ -390,6 +411,9 @@ class DoctorDatabase:
             patient_id = str(uuid.uuid4())[:8]
             conn = self.get_connection()
             cursor = conn.cursor()
+
+            # Turso enforces the doctor_id FK; make sure the doctor row exists.
+            self._ensure_doctor(conn, doctor_id)
 
             # Get RHD status or default to 'unknown'
             rhd_status = data.get('rhd_status', 'unknown')
@@ -699,7 +723,8 @@ class DoctorDatabase:
             triage_id = str(uuid.uuid4())[:8]
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+            self._ensure_doctor(conn, doctor_id)   # Turso enforces the doctor FK
+
             # Safely convert all numeric values
             respiratory_rate = self._safe_float(data.get('respiratory_rate'))
             heart_rate = self._safe_float(data.get('heart_rate'))
@@ -966,7 +991,8 @@ class DoctorDatabase:
             recording_id = str(uuid.uuid4())[:8]
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+            self._ensure_doctor(conn, doctor_id)   # Turso enforces the doctor FK
+
             # Handle file data if present
             file_data = data.get('file')
             file_name = None
