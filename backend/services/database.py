@@ -22,7 +22,9 @@ class DoctorDatabase:
     
     def init_db(self):
         """Initialize database tables"""
-        conn = sqlite3.connect(self.db_path)
+        # timeout= sets SQLite's busy handler so concurrent writers wait for the
+        # lock (up to 10s) instead of immediately failing with 'database is locked'.
+        conn = sqlite3.connect(self.db_path, timeout=10)
         cursor = conn.cursor()
         
         # Doctors table
@@ -272,8 +274,12 @@ class DoctorDatabase:
             return default
     
     def get_connection(self):
-        """Get a database connection"""
-        return sqlite3.connect(self.db_path)
+        """Get a database connection.
+
+        timeout= sets SQLite's busy handler so concurrent writers wait for the
+        lock (up to 10s) instead of failing with 'database is locked'.
+        """
+        return sqlite3.connect(self.db_path, timeout=10)
     
     # ============ DOCTOR METHODS ============
     
@@ -351,16 +357,17 @@ class DoctorDatabase:
     
     def create_patient(self, doctor_id: str, data: Dict) -> Optional[str]:
         """Create a new patient for a doctor with RHD status"""
+        conn = None
         try:
             patient_id = str(uuid.uuid4())[:8]
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             # Get RHD status or default to 'unknown'
             rhd_status = data.get('rhd_status', 'unknown')
             if rhd_status not in ['none', 'suspected', 'confirmed', 'unknown']:
                 rhd_status = 'unknown'
-            
+
             cursor.execute('''
                 INSERT INTO patients (
                     id, doctor_id, name, age, gender, date_of_birth,
@@ -384,14 +391,18 @@ class DoctorDatabase:
                 data.get('rhd_notes'),
                 datetime.now().isoformat() if rhd_status != 'unknown' else None
             ))
-            
+
             conn.commit()
-            conn.close()
             return patient_id
-            
+
         except Exception as e:
             print(f"Error creating patient: {e}")
             return None
+        finally:
+            # Always release the connection/lock, even on error, so concurrent
+            # writers are not blocked by a leaked open connection.
+            if conn is not None:
+                conn.close()
     
     def update_patient(self, patient_id: str, data: Dict) -> bool:
         """Update patient information"""
