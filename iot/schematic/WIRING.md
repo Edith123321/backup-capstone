@@ -1,9 +1,7 @@
 # SAKA Stethoscope — Wiring Schematic
 
 Text schematic for the ESP32 + INMP441 build. Pin assignments are the source of
-truth in [`../src/Config.h`](../src/Config.h). (The `.pdf`/`.png` renders require
-an EDA tool such as KiCad/Fritzing and are produced separately.)
-
+truth in [`../src/Config.h`](../src/Config.h). 
 ## Connection table
 
 ### INMP441 I2S MEMS microphone → ESP32

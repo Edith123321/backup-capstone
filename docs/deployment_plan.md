@@ -36,9 +36,18 @@ Codified in [`render.yaml`](../render.yaml).
 6. **Session store:** `SESSION_FILE_DIR` points at a temp dir so Flask-Session cannot shadow the `flask_session` package on worker restart.
 
 ### Data persistence
-The free tier filesystem is ephemeral (resets on cold start). `DATABASE_PATH`
-lets the SQLite file live on a mounted disk (`render.yaml` `disk:` block, paid
-instance) for durable storage. Alternative: migrate to Render Postgres.
+The free-tier filesystem is ephemeral (resets on cold start), so a local SQLite
+file would lose every patient on restart. Storage is therefore backed by
+**Turso (libSQL)** — a free, durable, SQLite-compatible cloud database. The app
+picks the backend at runtime:
+
+* `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` set → pure-remote libSQL (production;
+  every write commits straight to Turso and survives restarts).
+* neither set → local SQLite file (development / tests).
+
+Because libSQL speaks the SQLite dialect, no SQL changed — only the connection
+layer in `backend/services/database.py`. One-time setup is documented in
+[`TURSO_SETUP.md`](TURSO_SETUP.md). See also [`results_analysis.md`](results_analysis.md).
 
 ## 4. Frontend deployment (Render Static Site)
 
@@ -60,13 +69,13 @@ Deployment was verified end-to-end in a clean, Render-equivalent environment:
 
 | Check | Result |
 |-------|--------|
-| `pip install -r requirements.txt` in a fresh venv | ✅ resolves, installs scikit-learn 1.7.2 |
-| `gunicorn app:app` boot | ✅ `/health` healthy, all services loaded |
-| Model load | ✅ `/screening/health` → `model_loaded: true`, 51 features |
-| Real prediction through deployed path | ✅ `test.wav` → prediction + severity |
-| PDF report generate + download | ✅ valid `%PDF-`, HTTP 200 |
-| Frontend build | ✅ 288 modules, backend URL embedded, `_redirects` present |
-| Unit + integration tests | ✅ 25 passing (see `tests/`) |
+| `pip install -r requirements.txt` in a fresh venv |  resolves, installs scikit-learn 1.7.2 |
+| `gunicorn app:app` boot |  `/health` healthy, all services loaded |
+| Model load |  `/screening/health` → `model_loaded: true`, 51 features |
+| Real prediction through deployed path |  `test.wav` → prediction + severity |
+| PDF report generate + download |  valid `%PDF-`, HTTP 200 |
+| Frontend build |  288 modules, backend URL embedded, `_redirects` present |
+| Unit + integration tests |  25 passing (see `tests/`) |
 
 ## 7. Rollback
 Render keeps previous deploys; roll back via the dashboard. The DB file (on a
