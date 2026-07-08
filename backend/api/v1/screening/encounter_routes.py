@@ -24,6 +24,15 @@ except ImportError as e:
     CLASSIFIER_AVAILABLE = False
     load_audio_safe = None
 
+# Signal Quality Assessment — human-centered pre-check (see signal_quality.py).
+try:
+    from api.v1.screening.signal_quality import assess_signal_quality
+except ImportError:
+    try:
+        from signal_quality import assess_signal_quality
+    except ImportError:
+        assess_signal_quality = None
+
 # Allowed extensions
 ALLOWED_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'aiff', 'mp4'}
 
@@ -172,6 +181,39 @@ def generate_recommendation(ml_result, triage_level, triage_color, rhd_detected,
             'severity': 0
         }
 
+def clinical_red_flag_override(ml_result, triage_color, triage_level=None):
+    """
+    Scenario 7 — Conflicting Data / Clinical Red-Flag Override.
+
+    The ultimate human-centered safety net: the AI is an aid, not the final word.
+    If the clinical triage (Jones criteria) is HIGH RISK but the AI reports a
+    normal rhythm, we must NOT let a nurse trust the AI and send a sick child
+    home. We surface an explicit, un-ignorable override telling them to refer
+    regardless of the AI result.
+
+    Returns an override dict when the conflict exists, otherwise None.
+    """
+    prediction = str(ml_result.get('prediction', '')).strip().lower()
+    ai_says_normal = prediction in ('normal', 'no audio', 'unavailable', 'error', 'no', '')
+    high_risk_triage = str(triage_color).strip().lower() in ('red', 'orange')
+
+    if high_risk_triage and ai_says_normal:
+        return {
+            'active': True,
+            'priority': 'OVERRIDE',
+            'title': '⚠️ Clinical override: refer regardless of AI',
+            'message': (
+                'The AI detected a normal rhythm, but the clinical symptoms are '
+                'HIGH RISK (Jones triage: '
+                f'{triage_level or triage_color}). Do NOT rely on the AI result — '
+                'refer this patient to a specialist regardless.'
+            ),
+            'action': 'Refer to a specialist / cardiologist regardless of AI result',
+            'reason': 'triage_high_risk_ai_normal',
+        }
+    return None
+
+
 # ===========================
 # ROUTES
 # ===========================
@@ -246,7 +288,8 @@ def create_encounter():
         }
         severity = None
         recording_id = None
-        
+        sqa_dict = None   # signal-quality report, populated when audio is present
+
         if audio_file and audio_file.filename != '':
             print(f"🎵 Processing audio: {audio_file.filename}")
             
@@ -263,9 +306,34 @@ def create_encounter():
                     audio_file.save(tmp_file.name)
                     filepath = tmp_file.name
                 print(f"📁 Temp file: {filepath}")
-                
-                # Run ML prediction
-                if CLASSIFIER_AVAILABLE and classifier is not None:
+
+                # === SIGNAL QUALITY ASSESSMENT (human-centered gate) ===
+                # If the recording isn't a gradeable heartbeat we skip the AI and
+                # record WHY — but we still keep the triage work (a bad recording
+                # must never discard a completed clinical assessment).
+                sqa_dict = None
+                sqa_blocked = False
+                if assess_signal_quality is not None and load_audio_safe is not None:
+                    try:
+                        _y, _sr = load_audio_safe(filepath)
+                        if _y is not None:
+                            _sqa = assess_signal_quality(_y, sr=4000)
+                            sqa_dict = _sqa.to_dict()
+                            sqa_blocked = _sqa.blocked
+                            if sqa_blocked:
+                                print(f"🚫 SQA blocked audio: {_sqa.code} — {_sqa.title}")
+                    except Exception as _sqa_err:
+                        print(f"⚠️ SQA error (continuing): {_sqa_err}")
+
+                # Run ML prediction (skip if the signal was rejected)
+                if sqa_blocked:
+                    ml_result = {
+                        'prediction': 'Signal Rejected',
+                        'confidence': 0,
+                        'probabilities': {'Normal': 0, 'RHD': 0},
+                        'error': sqa_dict.get('message') if sqa_dict else 'Poor signal quality'
+                    }
+                elif CLASSIFIER_AVAILABLE and classifier is not None:
                     try:
                         print("🧠 Running ML prediction...")
                         # Call predict without arguments - it takes only the filepath
@@ -390,7 +458,16 @@ def create_encounter():
             rhd_detected,
             severity.get('grade') if severity else 0
         )
-        
+
+        # Scenario 7 — clinical red-flag override. If triage is high-risk but the
+        # AI says normal, this un-ignorable override tells the nurse to refer
+        # regardless of the AI. It takes priority over the AI recommendation.
+        clinical_override = clinical_red_flag_override(
+            ml_result, triage_color, triage_level
+        )
+        if clinical_override:
+            print(f"⚠️ Clinical override active: {clinical_override['reason']}")
+
         # === STEP 6: Return Response ===
         response = {
             'success': True,
@@ -408,6 +485,8 @@ def create_encounter():
                 'error': ml_result.get('error')
             },
             'severity': severity,
+            'signal_quality': sqa_dict,
+            'clinical_override': clinical_override,
             'auscultation': {
                 'point': auscultation_point,
                 'label': auscultation_label

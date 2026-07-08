@@ -191,6 +191,12 @@ const IoTDevices = () => {
   const [showWaveform, setShowWaveform] = useState(false);
   const [signalQuality, setSignalQuality] = useState(0);
   const [recordingProgress, setRecordingProgress] = useState(0);
+  // Scenario 8 — Device Health: battery/signal telemetry from the ESP32.
+  const [battery, setBattery] = useState(null);       // 0-100, or null if unknown
+  const [rssi, setRssi] = useState(null);             // signal strength (dBm)
+  const [deviceSqa, setDeviceSqa] = useState(null);   // on-device SQA report from ESP32
+  const BATTERY_CRITICAL = 15;                         // matches firmware threshold
+  const batteryLow = battery !== null && battery < BATTERY_CRITICAL;
   const [registerForm, setRegisterForm] = useState({
     device_name: '',
     device_type: 'stethoscope',
@@ -458,6 +464,25 @@ const IoTDevices = () => {
         processRecording();
       } else if (audioData.type === 'signal_quality') {
         setSignalQuality(audioData.quality || 50);
+        // On-device SQA report from the ESP32 (see iot/src/SignalQuality.cpp):
+        // surface the block/warning state so the nurse gets instant feedback.
+        setDeviceSqa({
+          blocked: !!audioData.blocked,
+          code: audioData.code || 'ok',
+          message: audioData.message || '',
+          bpm: audioData.bpm || 0,
+          rms_dbfs: audioData.rms_dbfs,
+          clip_ratio: audioData.clip_ratio,
+          final: !!audioData.final,
+        });
+      }
+
+      // Scenario 8 — Device Health telemetry (sent by the ESP32 on GET_STATUS).
+      if (audioData.battery_percent !== undefined) {
+        setBattery(audioData.battery_percent);
+      }
+      if (audioData.rssi !== undefined) {
+        setRssi(audioData.rssi);
       }
     } catch (err) {
       console.error('Error processing audio data:', err);
@@ -474,6 +499,7 @@ const IoTDevices = () => {
     try {
       audioChunks.current = [];
       setRecordingProgress(0);
+      setDeviceSqa(null);   // clear any prior on-device quality report
       
       wsConnection.current.send(JSON.stringify({ 
         action: 'start_recording',
@@ -756,6 +782,22 @@ const IoTDevices = () => {
           </div>
         </div>
 
+        {/* Scenario 8 — Device Health: battery status card */}
+        <div className="status-card">
+          <div className="status-icon status-icon-signal">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="1" y="6" width="18" height="12" rx="2" ry="2"/>
+              <line x1="23" y1="10" x2="23" y2="14"/>
+            </svg>
+          </div>
+          <div className="status-info">
+            <span className="status-label">Battery {rssi !== null ? `· ${rssi} dBm` : ''}</span>
+            <span className={`status-value ${battery === null ? '' : battery < BATTERY_CRITICAL ? 'poor' : battery < 40 ? 'fair' : 'good'}`}>
+              {battery === null ? 'Unknown' : `${battery}%${battery < BATTERY_CRITICAL ? ' · Charge!' : ''}`}
+            </span>
+          </div>
+        </div>
+
         <div className="status-card">
           <div className="status-icon status-icon-devices">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -810,13 +852,60 @@ const IoTDevices = () => {
         </div>
       )}
 
+      {/* Scenario 8 — Device Health: block recording on a dying battery, whose
+          BLE jitter corrupts audio with murmur-like clicks. */}
+      {batteryLow && (
+        <div className="sqa-block" style={{ marginTop: 12 }}>
+          <div className="sqa-block-header">
+            <span className="sqa-block-icon">🪫</span>
+            <span className="sqa-block-title">Charge device to ensure signal integrity</span>
+          </div>
+          <p className="sqa-block-message">
+            Stethoscope battery is at {battery}%. A low battery causes Bluetooth to
+            drop packets, adding digital clicks that can look like murmurs. Please
+            charge the device before recording.
+          </p>
+        </div>
+      )}
+
+      {/* On-device Signal Quality feedback (from the ESP32, scenarios 1/2/3) */}
+      {deviceSqa && (isRecording || deviceSqa.final) && deviceSqa.code !== 'ok' && (
+        <div className={deviceSqa.blocked ? 'sqa-block' : 'sqa-warnings'} style={{ marginTop: 12 }}>
+          {deviceSqa.blocked ? (
+            <>
+              <div className="sqa-block-header">
+                <span className="sqa-block-icon">🎧</span>
+                <span className="sqa-block-title">
+                  {deviceSqa.final ? 'Recording rejected by device' : 'Signal problem detected'}
+                </span>
+              </div>
+              <p className="sqa-block-message">{deviceSqa.message}</p>
+              <div className="sqa-metrics">
+                {deviceSqa.rms_dbfs !== undefined && <span>Loudness: {deviceSqa.rms_dbfs} dBFS</span>}
+                {deviceSqa.bpm > 0 && <span>Est. rate: {deviceSqa.bpm} BPM</span>}
+                {deviceSqa.clip_ratio !== undefined && <span>Clipping: {(deviceSqa.clip_ratio * 100).toFixed(1)}%</span>}
+              </div>
+            </>
+          ) : (
+            <div className="sqa-warning">
+              <span className="sqa-warning-icon">🎧</span>
+              <div>
+                <div className="sqa-warning-title">Device signal note</div>
+                <div className="sqa-warning-message">{deviceSqa.message}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Recording Controls */}
       <div className="recording-controls">
         <div className="controls-wrapper">
-          <button 
+          <button
             className={`btn-record ${isRecording ? 'recording' : ''}`}
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={recordingStatus !== 'connected' && !isRecording}
+            disabled={(recordingStatus !== 'connected' && !isRecording) || (batteryLow && !isRecording)}
+            title={batteryLow ? 'Charge device to ensure signal integrity' : undefined}
           >
             {isRecording ? (
               <>

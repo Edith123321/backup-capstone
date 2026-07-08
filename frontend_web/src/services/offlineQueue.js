@@ -5,7 +5,12 @@
  * Implements the "Gisozi" Test - Offline Resilience
  */
 
-import { v4 as uuidv4 } from 'uuid';
+// Native UUID generator — avoids an external dependency and works offline.
+// Falls back to a timestamp-random id on very old browsers.
+const uuidv4 = () =>
+  (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 // ============================================
 // CONSTANTS

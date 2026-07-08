@@ -120,6 +120,14 @@ try:
 except ImportError:
     from api.v1.screening.feature_extraction import extract_feature_vector
 
+# Signal Quality Assessment — the human-centered guardrail that runs BEFORE the
+# classifier so we never force a Normal/RHD label onto garbage, silence, a
+# fragment, or a non-heart sound. See signal_quality.py.
+try:
+    from signal_quality import assess_signal_quality
+except ImportError:
+    from api.v1.screening.signal_quality import assess_signal_quality
+
 
 def extract_features(filepath, sr=4000, duration=10.0):
     try:
@@ -246,7 +254,27 @@ def predict():
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
             file.save(tmp.name)
             tmp_path = tmp.name
-        
+
+        # === SIGNAL QUALITY ASSESSMENT (human-centered gate) ===
+        # Inspect the raw waveform BEFORE the AI runs. If it isn't a gradeable
+        # heartbeat (too short, too faint, not a heart sound), we refuse to
+        # classify and return plain-language guidance instead of a misleading
+        # Normal/RHD label. Soft warnings (noise, tachycardia) are passed
+        # through alongside a real prediction.
+        y, _sr = load_audio_safe(tmp_path)
+        if y is None:
+            return create_cors_response({'error': 'Could not read audio file'}, 400)
+        sqa = assess_signal_quality(y, sr=4000)
+        if sqa.blocked:
+            print(f"🚫 SQA blocked prediction: {sqa.code} — {sqa.title}")
+            return create_cors_response({
+                'success': False,
+                'blocked': True,
+                'prediction': None,
+                'signal_quality': sqa.to_dict(),
+                'error': sqa.message,
+            }, 200)  # 200: this is an expected, user-actionable outcome, not a server error
+
         # Predict
         result = classifier.predict(tmp_path)
         if result is None:
@@ -298,12 +326,20 @@ def predict():
         # Return with consistent field names
         return create_cors_response({
             'success': True,
+            'blocked': False,
             'prediction': result['class'],
             'confidence': result['confidence'],
             'prob_normal': result.get('prob_normal', 0),
             'prob_rhd': result.get('prob_rhd', 0),
+            # `probabilities` object mirrors prob_normal/prob_rhd for the frontend,
+            # which reads result.probabilities.{Normal,RHD}.
+            'probabilities': {
+                'Normal': result.get('prob_normal', 0),
+                'RHD': result.get('prob_rhd', 0),
+            },
             'recording_id': recording_id,
             'severity': severity,
+            'signal_quality': sqa.to_dict(),
             'auscultation_point': auscultation_point,
             'auscultation_label': auscultation_label
         })
