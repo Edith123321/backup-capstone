@@ -139,16 +139,35 @@ def _rhythm_strength_and_bpm(env: np.ndarray, sr: int):
     Returns (strength, bpm) where strength is the normalised autocorrelation
     peak (0-1) within the plausible cardiac-cycle lag range, and bpm is derived
     from that dominant lag (0 if none found).
+
+    PERFORMANCE: the envelope is first decimated to ~200 Hz and the
+    autocorrelation is computed via FFT (O(n log n)) rather than np.correlate's
+    direct O(n^2). On a 10 s / 4 kHz clip the naive version is ~1.6e9 ops, which
+    is instant on a dev box but takes ~60 s (and gets OOM/timeout-killed) on a
+    throttled free-tier CPU. Cardiac rhythm is < 4 Hz, so 200 Hz is ample.
     """
-    env = env - np.mean(env)
-    if np.allclose(env, 0):
+    # Decimate the (already smoothed) envelope so the autocorrelation is cheap.
+    target_rate = 200
+    factor = max(1, int(sr // target_rate))
+    env_ds = np.asarray(env[::factor], dtype=float)
+    env_sr = sr / factor
+
+    env_ds = env_ds - np.mean(env_ds)
+    n = len(env_ds)
+    if n < 8 or np.allclose(env_ds, 0):
         return 0.0, 0.0
-    ac = np.correlate(env, env, mode='full')[len(env) - 1:]
+
+    # FFT-based autocorrelation, zero-padded to avoid circular wrap-around.
+    nfft = 1
+    while nfft < 2 * n:
+        nfft *= 2
+    F = np.fft.rfft(env_ds, n=nfft)
+    ac = np.fft.irfft(F * np.conj(F), n=nfft)[:n]
     ac = ac / (ac[0] + 1e-9)                 # normalise so lag-0 == 1
 
     # Cardiac cycle (S1->S1) for 40-200 BPM -> lag 0.3 s to 1.5 s.
-    lag_lo = int(0.30 * sr)
-    lag_hi = min(len(ac) - 1, int(1.5 * sr))
+    lag_lo = int(0.30 * env_sr)
+    lag_hi = min(n - 1, int(1.5 * env_sr))
     if lag_hi <= lag_lo:
         return 0.0, 0.0
 
@@ -159,7 +178,7 @@ def _rhythm_strength_and_bpm(env: np.ndarray, sr: int):
     best = peaks[np.argmax(segment[peaks])]
     strength = float(segment[best])
     lag = lag_lo + best
-    bpm = 60.0 * sr / lag
+    bpm = 60.0 * env_sr / lag
     return max(0.0, strength), float(bpm)
 
 
