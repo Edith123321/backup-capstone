@@ -187,6 +187,19 @@ const PatientProfile = () => {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
+      // Human-centered signal-quality gate: if the recording wasn't gradeable
+      // (too short / too faint / not a heartbeat), show the guidance instead of
+      // a misleading "Unknown" prediction.
+      if (result.blocked) {
+        const sq = result.signal_quality;
+        alert(`${sq?.title || 'Recording not gradeable'}\n\n${sq?.message || result.error || 'Please re-record and try again.'}`);
+        return;
+      }
+      // Surface soft warnings (noise / tachycardia / short) without blocking.
+      (result.signal_quality?.warnings || []).forEach((w) =>
+        console.warn('Signal note:', w.message)
+      );
+
       const prediction = result.prediction || result.class || 'Unknown';
       const confidence = result.confidence || 0;
       const severity = getSeverityGrade(prediction, confidence);
