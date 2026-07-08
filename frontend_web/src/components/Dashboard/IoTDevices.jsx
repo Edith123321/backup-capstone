@@ -184,6 +184,10 @@ const IoTDevices = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  // Audio handlers (ws.onmessage / BLE listener) are registered once at connect
+  // time and would capture a stale `isRecording`. This ref always holds the live
+  // value so chunk collection works for both transports.
+  const isRecordingRef = useRef(false);
   const [recordingStatus, setRecordingStatus] = useState('idle');
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -273,16 +277,25 @@ const IoTDevices = () => {
 
       // Create WebSocket connection
       const ws = new WebSocket(`ws://${device.ip_address}/audio`);
-      
+      // Audio frames arrive as raw binary (int16 PCM); ask for ArrayBuffers so
+      // we can decode them instead of receiving opaque Blobs.
+      ws.binaryType = 'arraybuffer';
+
       ws.onopen = () => {
         console.log('Connected to IoT device:', device.device_name);
         setRecordingStatus('connected');
         updateDeviceStatus(device.id, 'online');
         setSignalQuality(100);
       };
-      
+
       ws.onmessage = (event) => {
-        handleAudioData(event.data);
+        if (event.data instanceof ArrayBuffer) {
+          // Binary audio frame from the firmware (webSocket.broadcastBIN).
+          handleAudioData({ type: 'waveform', data: pcm16ToSamples(event.data) });
+        } else {
+          // Text frame: JSON status / signal_quality report.
+          handleAudioData(event.data);
+        }
       };
       
       ws.onclose = () => {
@@ -336,12 +349,9 @@ const IoTDevices = () => {
       await characteristic.startNotifications();
       characteristic.addEventListener('characteristicvaluechanged', handleBluetoothNotification);
 
-      // Ask the firmware to start streaming (matches BLE_Handler onWrite "START").
-      try {
-        await characteristic.writeValue(new TextEncoder().encode('START'));
-      } catch (e) {
-        console.warn('Could not send START command:', e);
-      }
+      // Note: we do NOT start streaming here — the Record button issues
+      // START_RECORDING/STOP_RECORDING over this same characteristic, so the
+      // Bluetooth flow matches the WiFi flow (connect, then record).
 
       setSelectedDevice({
         id: device.id || 'ble-device',
@@ -365,13 +375,21 @@ const IoTDevices = () => {
     }
   };
 
-  // Decode raw int16 PCM notifications into normalised samples for the waveform.
-  const handleBluetoothNotification = (event) => {
-    const view = event.target.value; // DataView
+  // Decode raw int16 little-endian PCM (from either transport) into normalised
+  // [-1,1] float samples. The firmware streams identical frames over BLE notify
+  // and WebSocket binary, so both paths share this.
+  const pcm16ToSamples = (buffer) => {
+    const view = buffer instanceof DataView ? buffer : new DataView(buffer);
     const samples = [];
     for (let i = 0; i + 1 < view.byteLength; i += 2) {
       samples.push(view.getInt16(i, true) / 32768);
     }
+    return samples;
+  };
+
+  // Bluetooth audio notification -> waveform samples.
+  const handleBluetoothNotification = (event) => {
+    const samples = pcm16ToSamples(event.target.value); // event.target.value is a DataView
     if (samples.length) {
       handleAudioData({ type: 'waveform', data: samples });
     }
@@ -447,8 +465,8 @@ const IoTDevices = () => {
         }
         setWaveformData(waveformBuffer.current);
         
-        // Store audio data if recording
-        if (isRecording) {
+        // Store audio data if recording (ref avoids the stale-closure trap)
+        if (isRecordingRef.current) {
           audioChunks.current.push(values);
           setRecordingProgress(prev => Math.min(prev + 5, 95));
         }
@@ -489,55 +507,65 @@ const IoTDevices = () => {
     }
   };
 
-  // Start recording
-  const startRecording = () => {
-    if (!wsConnection.current || wsConnection.current.readyState !== WebSocket.OPEN) {
-      alert('Please connect to a device first');
+  // True when we're streaming over Bluetooth rather than WebSocket/WiFi.
+  const isBleConnected = () => !!bleCharacteristic.current;
+  const isWsConnected = () =>
+    wsConnection.current && wsConnection.current.readyState === WebSocket.OPEN;
+
+  // Send a recording command over whichever transport is active. The firmware
+  // accepts the same "START_RECORDING" / "STOP_RECORDING" tokens on both the
+  // WebSocket (as {command}) and the BLE characteristic (as a written string).
+  const sendDeviceCommand = async (command) => {
+    if (isBleConnected()) {
+      await bleCharacteristic.current.writeValue(new TextEncoder().encode(command));
+    } else if (isWsConnected()) {
+      wsConnection.current.send(JSON.stringify({ command, timestamp: new Date().toISOString() }));
+    } else {
+      throw new Error('no-transport');
+    }
+  };
+
+  // Start recording (works over both Bluetooth and WiFi)
+  const startRecording = async () => {
+    if (!isBleConnected() && !isWsConnected()) {
+      alert('Please connect to a device first (WiFi or Bluetooth).');
       return;
     }
-
     try {
       audioChunks.current = [];
       setRecordingProgress(0);
       setDeviceSqa(null);   // clear any prior on-device quality report
-      
-      wsConnection.current.send(JSON.stringify({ 
-        action: 'start_recording',
-        timestamp: new Date().toISOString()
-      }));
-      
+
+      await sendDeviceCommand('START_RECORDING');
+
+      isRecordingRef.current = true;
       setIsRecording(true);
       setRecordingStatus('recording');
-      console.log('Recording started...');
-      
+      console.log(`Recording started over ${isBleConnected() ? 'Bluetooth' : 'WiFi'}...`);
     } catch (error) {
       console.error('Failed to start recording:', error);
       alert('Failed to start recording. Please try again.');
     }
   };
 
-  // Stop recording
-  const stopRecording = () => {
-    if (!wsConnection.current || wsConnection.current.readyState !== WebSocket.OPEN) {
+  // Stop recording (works over both Bluetooth and WiFi)
+  const stopRecording = async () => {
+    isRecordingRef.current = false;
+    if (!isBleConnected() && !isWsConnected()) {
       setIsRecording(false);
       setRecordingStatus('idle');
       return;
     }
-
     try {
-      wsConnection.current.send(JSON.stringify({ 
-        action: 'stop_recording',
-        timestamp: new Date().toISOString()
-      }));
-      
+      await sendDeviceCommand('STOP_RECORDING');
+
       setIsRecording(false);
       setRecordingStatus('processing');
       setRecordingProgress(100);
-      
+
       setTimeout(() => {
         processRecording();
       }, 1500);
-      
     } catch (error) {
       console.error('Failed to stop recording:', error);
       setIsRecording(false);
@@ -580,7 +608,10 @@ const IoTDevices = () => {
 
   // Create WAV blob from audio data
   const createWavBlob = (audioData) => {
-    const sampleRate = 44100;
+    // Must match the firmware capture rate (Config.h SAMPLE_RATE = 4000 Hz).
+    // Writing 44100 here would misrepresent the timing and the backend would
+    // resample it wrongly, corrupting the heart-rate/feature analysis.
+    const sampleRate = 4000;
     const numChannels = 1;
     const bitsPerSample = 16;
     const byteRate = sampleRate * numChannels * bitsPerSample / 8;

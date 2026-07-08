@@ -677,6 +677,26 @@ def log_response(response):
         logger.info(f"📤 {request.method} {request.path} - {response.status_code}")
     return response
 
+
+# =========================
+# GLOBAL ERROR HANDLER
+# =========================
+# Guarantee that even an unhandled exception returns JSON (not an HTML error
+# page) and flows through flask-cors' after_request so the browser always gets
+# CORS headers — otherwise a 500 looks like a "CORS error" in the console.
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    from werkzeug.exceptions import HTTPException
+    code = e.code if isinstance(e, HTTPException) else 500
+    if code >= 500:
+        logger.error(f"❌ Unhandled error on {request.method} {request.path}: {e}", exc_info=True)
+    resp = jsonify({
+        'success': False,
+        'error': str(getattr(e, 'description', e)) or 'Internal server error',
+    })
+    resp.status_code = code
+    return resp  # flask-cors' after_request adds the CORS headers
+
 # =========================
 # MAIN
 # =========================
