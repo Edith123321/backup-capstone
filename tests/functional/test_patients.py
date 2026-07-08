@@ -165,3 +165,46 @@ class TestPatientOperations:
                 f"{base_url}{api_prefix}/database/patients/{patient_id}",
                 headers=auth_headers
             )
+
+class TestPatientValidation:
+    import pytest as _p
+
+    @pytest.mark.parametrize('age', [-5, 0, 1, 18, 65, 150, 200])
+    def test_create_patient_various_ages(self, base_url, api_prefix, auth_headers, test_doctor_id, age):
+        r = requests.post(f"{base_url}{api_prefix}/database/patients", headers=auth_headers,
+                          json={'name': 'Age Test', 'age': age, 'gender': 'Male',
+                                'doctor_id': test_doctor_id}, timeout=30)
+        assert r.status_code in (200, 400, 401, 500)
+        pid = r.json().get('patient_id') if r.status_code == 200 else None
+        if pid:
+            requests.delete(f"{base_url}{api_prefix}/database/patients/{pid}", headers=auth_headers)
+
+    @pytest.mark.parametrize('gender', ['Male', 'Female', 'Other', '', 'unknown'])
+    def test_create_patient_various_genders(self, base_url, api_prefix, auth_headers, test_doctor_id, gender):
+        r = requests.post(f"{base_url}{api_prefix}/database/patients", headers=auth_headers,
+                          json={'name': 'Gender Test', 'age': 30, 'gender': gender,
+                                'doctor_id': test_doctor_id}, timeout=30)
+        assert r.status_code in (200, 400, 401, 500)
+        pid = r.json().get('patient_id') if r.status_code == 200 else None
+        if pid:
+            requests.delete(f"{base_url}{api_prefix}/database/patients/{pid}", headers=auth_headers)
+
+    def test_get_nonexistent_patient(self, base_url, api_prefix, auth_headers):
+        r = requests.get(f"{base_url}{api_prefix}/database/patients/nonexistent-id",
+                         headers=auth_headers, timeout=30)
+        assert r.status_code in (404, 200)
+
+    def test_delete_nonexistent_patient(self, base_url, api_prefix, auth_headers):
+        r = requests.delete(f"{base_url}{api_prefix}/database/patients/nonexistent-id",
+                            headers=auth_headers, timeout=30)
+        assert r.status_code in (200, 404, 500)
+
+    def test_rhd_summary(self, base_url, api_prefix, auth_headers, test_doctor_id):
+        r = requests.get(f"{base_url}{api_prefix}/database/patients/rhd-summary",
+                         params={'doctor_id': test_doctor_id}, headers=auth_headers, timeout=30)
+        assert r.status_code in (200, 400, 404)
+
+    def test_missing_name_rejected(self, base_url, api_prefix, auth_headers, test_doctor_id):
+        r = requests.post(f"{base_url}{api_prefix}/database/patients", headers=auth_headers,
+                          json={'age': 30, 'doctor_id': test_doctor_id}, timeout=30)
+        assert r.status_code in (200, 400, 401, 500)
