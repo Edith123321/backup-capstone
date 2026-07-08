@@ -9,3 +9,6 @@ tests/test_report.json
 # SQLite WAL sidecar files
 *.db-wal
 *.db-shm
+
+# Device WiFi credentials (never commit)
+iot/src/Secrets.h

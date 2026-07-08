@@ -431,12 +431,13 @@ def save_recording():
 
             return create_cors_response({'error': 'Failed to save recording'}, 500)
 
-        # JSON fallback
-        data = request.json
+        # JSON fallback (silent=True so a non-JSON body returns a clean 400,
+        # not a 415 that surfaces in the browser as a confusing CORS error).
+        data = request.get_json(silent=True) or {}
         doctor_id = data.get('doctor_id')
 
         if not doctor_id:
-            return create_cors_response({'error': 'doctor_id required'}, 400)
+            return create_cors_response({'error': 'doctor_id required (send multipart with a file, or JSON)'}, 400)
 
         recording_id = db.save_heart_sound_recording(doctor_id, data)
 

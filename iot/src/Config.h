@@ -33,6 +33,23 @@
 #define AP_MODE_SSID        "Saka-Stethoscope"
 #define AP_MODE_PASSWORD    "saka2026"
 
+// ---- Station mode: join your existing WiFi router --------------------------
+// Credentials live in Secrets.h (git-ignored) so real passwords never land in
+// git. Copy Secrets.h.example -> Secrets.h and fill in your 2.4 GHz network.
+// The placeholder defaults below let a fresh clone still compile (it will fail
+// to join WiFi and fall back to the AP hotspot at 192.168.4.1).
+#if defined(__has_include)
+#  if __has_include("Secrets.h")
+#    include "Secrets.h"
+#  endif
+#endif
+#ifndef WIFI_STA_SSID
+#  define WIFI_STA_SSID       "YOUR_WIFI_NAME"
+#endif
+#ifndef WIFI_STA_PASSWORD
+#  define WIFI_STA_PASSWORD   "YOUR_WIFI_PASSWORD"
+#endif
+
 // ==================== AUDIO PROCESSING ====================
 #define BANDPASS_LOW        20                   // Low frequency cutoff (Hz)
 #define BANDPASS_HIGH       400                  // High frequency cutoff (Hz)
