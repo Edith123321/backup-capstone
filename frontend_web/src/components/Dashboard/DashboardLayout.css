@@ -2298,3 +2298,87 @@ h1, h2, h3, h4, h5, h6, p, span, div, button, input, select, textarea {
   font-size: 12px;
   color: var(--text-secondary);
 }
+/* ============================================================
+   SIGNAL QUALITY ASSESSMENT (human-centered pre-check)
+   ============================================================ */
+.sqa-block {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--danger-surface, #fee2e2);
+  border: 1px solid var(--danger-border, #fca5a5);
+  margin: 12px 0;
+}
+.sqa-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.sqa-block-icon { font-size: 1.4rem; }
+.sqa-block-title {
+  font-weight: 700;
+  color: var(--danger, #b91c1c);
+  font-size: 1.02rem;
+}
+.sqa-block-message {
+  color: var(--text, #374151);
+  line-height: 1.5;
+  margin: 4px 0 10px;
+}
+.sqa-block-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted, #6b7280);
+  font-style: italic;
+  margin: 0;
+}
+.sqa-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.8rem;
+  color: var(--text-muted, #6b7280);
+  padding: 8px 0;
+  border-top: 1px dashed var(--border, #e5e7eb);
+  border-bottom: 1px dashed var(--border, #e5e7eb);
+  margin-bottom: 10px;
+}
+.sqa-warnings { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.sqa-warning {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warning-surface, #fef3c7);
+  border: 1px solid var(--warning, #f59e0b);
+}
+.sqa-warning-icon { font-size: 1.1rem; flex-shrink: 0; }
+.sqa-warning-title { font-weight: 600; color: var(--warning-dark, #92400e); font-size: 0.9rem; }
+.sqa-warning-message { color: var(--text, #374151); font-size: 0.85rem; line-height: 1.4; }
+
+/* Clinical red-flag override (scenario 7) — must stand out above all else */
+.clinical-override {
+  padding: 16px;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 2px solid #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+  margin: 12px 0;
+}
+.clinical-override-title { font-weight: 800; color: #b91c1c; margin-bottom: 6px; }
+.clinical-override-message { color: #7f1d1d; line-height: 1.5; }
+
+/* Stethoscope device-health status bar (scenario 8) */
+.device-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--surface-subtle, #f8fafc);
+  border: 1px solid var(--border, #e5e7eb);
+  font-size: 0.85rem;
+}
+.device-status-item { display: flex; align-items: center; gap: 6px; }
+.device-status-ok { color: #059669; }
+.device-status-warn { color: #d97706; }
+.device-status-critical { color: #dc2626; font-weight: 600; }

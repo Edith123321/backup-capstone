@@ -1,6 +1,7 @@
 // frontend_web/src/components/Dashboard/UploadHeartSound.jsx
 import React, { useState, useRef } from 'react';
 import { databaseApi } from '../../services/api';
+import { enqueueRequest } from '../../services/offlineQueue';
 import { useAuth } from '../../context/AuthContext';
 import './DashboardLayout.css';
 
@@ -19,6 +20,9 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
   const [prediction, setPrediction] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [predictionError, setPredictionError] = useState('');
+  // Signal Quality Assessment (human-centered pre-check) states
+  const [signalQuality, setSignalQuality] = useState(null);
+  const [blocked, setBlocked] = useState(false);
   
   const [formData, setFormData] = useState({
     patient_id: preSelectedPatient?.id || '',
@@ -65,6 +69,8 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       setSuccess(false);
       setPrediction(null);
       setPredictionError('');
+      setSignalQuality(null);
+      setBlocked(false);
     }
   };
 
@@ -78,6 +84,8 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
     setIsPredicting(true);
     setPredictionError('');
     setPrediction(null);
+    setSignalQuality(null);
+    setBlocked(false);
 
     try {
       const formData = new FormData();
@@ -90,6 +98,19 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
 
       const result = await response.json();
 
+      // Signal Quality Assessment is attached to both blocked and successful
+      // responses. Surface it either way so the nurse sees quality + warnings.
+      setSignalQuality(result.signal_quality || null);
+
+      // Human-centered gate: the recording was rejected before the AI ran
+      // (too short / too faint / not a heartbeat). Show guidance, not a label.
+      if (result.blocked) {
+        setBlocked(true);
+        setPrediction(null);
+        setPredictionError(result.error || result.signal_quality?.message || 'Recording could not be analysed.');
+        return;
+      }
+
       if (result.success) {
         setPrediction({
           class: result.prediction,
@@ -97,7 +118,7 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           probabilities: result.probabilities,
           visualization: result.visualization
         });
-        
+
         // If RHD detected with high confidence, show alert
         if (result.prediction === 'RHD' && result.confidence > 0.5) {
           setPredictionError(`⚠️ RHD detected with ${(result.confidence * 100).toFixed(1)}% confidence`);
@@ -247,6 +268,35 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       }
     } catch (err) {
       console.error('Upload error:', err);
+      // Scenario 4 — Infrastructure Failure. If the network is down (or the
+      // request failed while offline), don't lose the nurse's work: queue the
+      // recording locally and reassure them it's saved.
+      const isNetworkFailure = !navigator.onLine || /network|failed to fetch/i.test(err.message || '');
+      if (isNetworkFailure) {
+        try {
+          await enqueueRequest({
+            method: 'POST',
+            url: `${import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com'}/api/v1/database/recordings`,
+            data: {
+              patient_id: formData.patient_id,
+              doctor_id: user.id,
+              recording_date: formData.recording_date,
+              notes: formData.notes,
+              prediction: prediction?.class || null,
+              confidence: prediction?.confidence ?? null,
+            },
+          }, { priority: 'high' });
+          setSuccess(true);
+          setError('');
+          setPredictionError('💾 Saved locally. Prediction pending (waiting for internet). You can continue to the next patient.');
+          setUploadProgress(100);
+          if (onUploadComplete) onUploadComplete();
+          setTimeout(() => onClose(), 3500);
+          return;
+        } catch (queueErr) {
+          console.error('Offline queue error:', queueErr);
+        }
+      }
       setError(err.message || 'An error occurred. Please try again.');
       setUploadProgress(0);
     } finally {
@@ -262,6 +312,8 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
     setPrediction(null);
     setPredictionError('');
     setIsPredicting(false);
+    setSignalQuality(null);
+    setBlocked(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -386,7 +438,42 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
             {isPredicting && (
               <div className="predicting-indicator">
                 <div className="spinner"></div>
-                <span>Analyzing heart sound for RHD...</span>
+                <span>Checking signal quality &amp; analyzing heart sound...</span>
+              </div>
+            )}
+
+            {/* === SIGNAL QUALITY ASSESSMENT (human-centered gate) === */}
+            {blocked && signalQuality && (
+              <div className="sqa-block">
+                <div className="sqa-block-header">
+                  <span className="sqa-block-icon">🚫</span>
+                  <span className="sqa-block-title">{signalQuality.title || 'Recording rejected'}</span>
+                </div>
+                <p className="sqa-block-message">{signalQuality.message}</p>
+                <div className="sqa-metrics">
+                  <span>Duration: {signalQuality.metrics?.duration_s ?? '–'}s</span>
+                  <span>Loudness: {signalQuality.metrics?.rms_dbfs ?? '–'} dBFS</span>
+                  {signalQuality.metrics?.estimated_bpm > 0 && (
+                    <span>Est. rate: {signalQuality.metrics.estimated_bpm} BPM</span>
+                  )}
+                  <span>Quality: {signalQuality.quality_score}/100</span>
+                </div>
+                <p className="sqa-block-hint">The AI was not run — please re-record and try again.</p>
+              </div>
+            )}
+
+            {/* Soft warnings shown alongside a real prediction */}
+            {!blocked && signalQuality?.warnings?.length > 0 && (
+              <div className="sqa-warnings">
+                {signalQuality.warnings.map((w, i) => (
+                  <div key={i} className="sqa-warning">
+                    <span className="sqa-warning-icon">⚠️</span>
+                    <div>
+                      <div className="sqa-warning-title">{w.title}</div>
+                      <div className="sqa-warning-message">{w.message}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -490,12 +577,12 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={loading || !file || !formData.patient_id || success || isPredicting}
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading || !file || !formData.patient_id || success || isPredicting || blocked}
             >
-              {loading ? 'Uploading...' : success ? 'Uploaded!' : 'Upload Recording'}
+              {loading ? 'Uploading...' : success ? 'Uploaded!' : blocked ? 'Re-record required' : 'Upload Recording'}
             </button>
           </div>
         </form>
