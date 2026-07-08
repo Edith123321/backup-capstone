@@ -133,6 +133,22 @@ def callback():
             logger.error(f"❌ User info error: {user}")
             return jsonify({"error": "Failed to get user info"}), 400
 
+        # Persist the doctor so patient/recording FKs resolve (Turso enforces
+        # them). Defensive: never let a DB hiccup block login.
+        try:
+            import sys, os
+            sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
+            from services.database import db
+            db.save_doctor({
+                'id': user.get('id'),
+                'email': user.get('email'),
+                'name': user.get('name', ''),
+                'picture': user.get('picture', ''),
+            })
+            logger.info(f"✅ Doctor persisted: {user.get('email')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not persist doctor (continuing): {e}")
+
         # Generate JWT token
         logger.info("🔄 Generating JWT token...")
         jwt_token = jwt.encode(
