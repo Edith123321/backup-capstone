@@ -18,6 +18,7 @@ import PatientProfile from './PatientProfile';
 import NewEncounter from './NewEncounter';
 import PatientHistory from '../Patient/PatientHistory';
 import OfflineBanner from '../Common/OfflineBanner';
+import { warmUpBackend } from '../../services/resilientFetch';
 
 const DoctorDashboard = () => {
   const { user } = useAuth();
@@ -60,6 +61,12 @@ const DoctorDashboard = () => {
   };
 
   const activeSection = getActiveSection();
+
+  // Wake the (possibly spun-down) backend as soon as the dashboard loads, so
+  // it's warm by the time the nurse submits an encounter/recording.
+  useEffect(() => {
+    warmUpBackend();
+  }, []);
 
   // Fetch patient details when on patient page
   useEffect(() => {

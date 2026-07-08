@@ -1,7 +1,9 @@
 // frontend_web/src/components/Dashboard/NewEncounter.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNotify } from '../../context/NotificationContext';
 import { databaseApi } from '../../services/api';
+import { resilientFetch, friendlyError } from '../../services/resilientFetch';
 import { useNavigate } from 'react-router-dom';
 import AnatomicalMap, { AnatomicalMapTrigger } from './AnatomicalMap';
 import './Encounter.css';
@@ -71,6 +73,7 @@ const getSeverityGrade = (prediction, confidence) => {
 // ============================================
 const NewEncounter = () => {
   const { user } = useAuth();
+  const notify = useNotify();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -309,6 +312,82 @@ const NewEncounter = () => {
     return new Blob([view], { type: 'audio/wav' });
   };
 
+  // Turn collected samples into a WAV file on the recording state (shared by the
+  // Bluetooth and WiFi capture paths).
+  const finalizeDeviceSamples = (samples) => {
+    if (!samples.length) {
+      setError('No audio received from the device. Ensure it is powered on and streaming.');
+      setRecording(prev => ({ ...prev, isRecording: false }));
+      return;
+    }
+    const blob = encodeWav(samples, DEVICE_SAMPLE_RATE);
+    const file = new File([blob], 'device_recording.wav', { type: 'audio/wav' });
+    setRecording(prev => ({
+      ...prev,
+      file,
+      recordingBlob: blob,
+      audioUrl: URL.createObjectURL(blob),
+      isRecording: false,
+      prediction: null,
+      isValidHeartSound: null,
+      qualityScore: null,
+      validationIssues: [],
+      duration: samples.length / DEVICE_SAMPLE_RATE,
+      auscultation_point: selectedAuscultationPoint,
+      auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label,
+    }));
+  };
+
+  // ---- Record from the connected IoT stethoscope over WiFi (WebSocket) ----
+  // Same firmware protocol as Bluetooth, over ws://<device-ip>/audio. Note:
+  // ws:// is blocked from an HTTPS page (mixed content), so this path works when
+  // the dashboard runs locally over http; on the deployed HTTPS site use
+  // Bluetooth instead.
+  const recordFromDeviceWifi = async () => {
+    const remembered = localStorage.getItem('saka_device_ip') || '';
+    const ip = window.prompt(
+      'Enter the stethoscope IP address (shown on the device serial monitor on boot):',
+      remembered
+    );
+    if (!ip) return;
+    const host = ip.trim();
+    localStorage.setItem('saka_device_ip', host);
+
+    const samples = [];
+    let ws;
+    try {
+      setRecording(prev => ({ ...prev, isRecording: true }));
+      ws = new WebSocket(`ws://${host}/audio`);
+      ws.binaryType = 'arraybuffer';
+      ws.onmessage = (e) => {
+        if (e.data instanceof ArrayBuffer) {
+          const dv = new DataView(e.data);
+          for (let i = 0; i + 1 < dv.byteLength; i += 2) {
+            samples.push(dv.getInt16(i, true) / 32768);
+          }
+        }
+      };
+      // Wait for the socket to open (or fail).
+      await new Promise((resolve, reject) => {
+        ws.onopen = resolve;
+        ws.onerror = () => reject(new Error(`Could not connect to ${host}`));
+        setTimeout(() => reject(new Error('Connection timed out')), 8000);
+      });
+
+      ws.send(JSON.stringify({ command: 'START_RECORDING' }));
+      await new Promise((res) => setTimeout(res, 10000)); // capture ~10s
+      try { ws.send(JSON.stringify({ command: 'STOP_RECORDING' })); } catch { /* ignore */ }
+      ws.close();
+
+      finalizeDeviceSamples(samples);
+    } catch (error) {
+      console.error('WiFi device recording failed:', error);
+      setError('WiFi device recording failed: ' + (error?.message || error));
+      setRecording(prev => ({ ...prev, isRecording: false }));
+      try { if (ws) ws.close(); } catch { /* ignore */ }
+    }
+  };
+
   const recordFromDevice = async () => {
     if (!navigator.bluetooth) {
       setError('Web Bluetooth is not supported here. Use Chrome or Edge over HTTPS, or upload a file.');
@@ -343,28 +422,7 @@ const NewEncounter = () => {
       await characteristic.stopNotifications();
       if (device.gatt?.connected) device.gatt.disconnect();
 
-      const samples = bleSamples.current;
-      if (!samples.length) {
-        setError('No audio received from the device. Ensure it is powered on and streaming.');
-        setRecording(prev => ({ ...prev, isRecording: false }));
-        return;
-      }
-      const blob = encodeWav(samples, DEVICE_SAMPLE_RATE);
-      const file = new File([blob], 'device_recording.wav', { type: 'audio/wav' });
-      setRecording(prev => ({
-        ...prev,
-        file,
-        recordingBlob: blob,
-        audioUrl: URL.createObjectURL(blob),
-        isRecording: false,
-        prediction: null,
-        isValidHeartSound: null,
-        qualityScore: null,
-        validationIssues: [],
-        duration: samples.length / DEVICE_SAMPLE_RATE,
-        auscultation_point: selectedAuscultationPoint,
-        auscultation_label: AUSCULTATION_POINTS[selectedAuscultationPoint]?.label,
-      }));
+      finalizeDeviceSamples(bleSamples.current);
     } catch (error) {
       if (error?.name !== 'NotFoundError') {
         console.error('Device recording failed:', error);
@@ -424,59 +482,100 @@ const NewEncounter = () => {
         formData.append('file', recording.file);
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/encounter`, {
-        method: 'POST',
-        body: formData
+      // Cold-start-aware submit: retries a spun-down backend and tells the nurse
+      // what's happening instead of failing with a cryptic "CORS" error.
+      const savingId = notify.loading('Saving encounter…');
+      let coldStartId = null;
+      const response = await resilientFetch(
+        `${API_BASE_URL}/api/v1/encounter`,
+        { method: 'POST', body: formData },
+        {
+          onRetry: () => {
+            if (!coldStartId) {
+              coldStartId = notify.info('Server is waking up — retrying…', {
+                title: 'Please wait', duration: 0,
+              });
+            }
+          },
+        }
+      );
+      if (coldStartId) notify.dismiss(coldStartId);
+      notify.dismiss(savingId);
+
+      let result = null;
+      try { result = await response.json(); } catch { /* handled below */ }
+
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || `Failed to save encounter (HTTP ${response.status})`);
+      }
+
+      // Calculate severity
+      const severity = getSeverityGrade(
+        result.ml_prediction?.prediction,
+        result.ml_prediction?.confidence
+      );
+
+      // Update recording with prediction result
+      setRecording({
+        ...recording,
+        prediction: result.ml_prediction,
+        severity: severity,
+        isProcessing: false
       });
 
-      const result = await response.json();
+      setEncounterResult({
+        success: true,
+        patientId: result.patient_id,
+        triage: result.triage,
+        prediction: result.ml_prediction,
+        severity: severity,
+        recommendation: result.recommendation,
+        // Human-centered additions:
+        signalQuality: result.signal_quality || null,      // scenarios 1,2,3,5,6
+        clinicalOverride: result.clinical_override || null, // scenario 7
+        followUpNeeded: result.rhd_status?.requires_follow_up || false,
+        followUpDays: result.rhd_status?.follow_up_days || null,
+        auscultation: result.auscultation,
+        message: `✅ Encounter completed! ${result.recommendation?.message || ''}`
+      });
 
-      if (result.success) {
-        // Calculate severity
-        const severity = getSeverityGrade(
-          result.ml_prediction?.prediction,
-          result.ml_prediction?.confidence
+      setShowReportButton(true);
+
+      // --- Human-centered notifications (the SQA/override design) ---
+      notify.success('Encounter saved successfully.', {
+        detail: result.recommendation?.message,
+      });
+
+      const sq = result.signal_quality;
+      if (sq?.blocked) {
+        notify.warning(sq.message || 'The heart sound was not gradeable — AI analysis was skipped.', {
+          title: sq.title || 'Signal not gradeable', duration: 0,
+        });
+      } else if (sq?.warnings?.length) {
+        sq.warnings.forEach((w) =>
+          notify.warning(w.message, { title: w.title || 'Signal note' })
         );
+      }
 
-        // Update recording with prediction result
-        setRecording({
-          ...recording,
-          prediction: result.ml_prediction,
-          severity: severity,
-          isProcessing: false
+      // Scenario 7 — clinical red-flag override must be impossible to miss.
+      if (result.clinical_override?.active) {
+        notify.error(result.clinical_override.message, {
+          title: result.clinical_override.title || 'Clinical override',
+          duration: 0,
+          action: { label: 'Open patient', onClick: () => navigate(`/patient/${result.patient_id}`) },
         });
-
-        setEncounterResult({
-          success: true,
-          patientId: result.patient_id,
-          triage: result.triage,
-          prediction: result.ml_prediction,
-          severity: severity,
-          recommendation: result.recommendation,
-          // Human-centered additions:
-          signalQuality: result.signal_quality || null,      // scenarios 1,2,3,5,6
-          clinicalOverride: result.clinical_override || null, // scenario 7
-          followUpNeeded: result.rhd_status?.requires_follow_up || false,
-          followUpDays: result.rhd_status?.follow_up_days || null,
-          auscultation: result.auscultation,
-          message: `✅ Encounter completed! ${result.recommendation?.message || ''}`
-        });
-
-        setShowReportButton(true);
-
-        // Navigate to patient after 5 seconds — but NOT when a clinical
-        // red-flag override is active; the nurse must read and act on it first.
-        if (!result.clinical_override?.active) {
-          setTimeout(() => {
-            navigate(`/patient/${result.patient_id}`);
-          }, 5000);
-        }
       } else {
-        throw new Error(result.error || 'Failed to save encounter');
+        // Auto-navigate only when there's no override the nurse must read first.
+        setTimeout(() => navigate(`/patient/${result.patient_id}`), 5000);
       }
     } catch (error) {
       console.error('Encounter error:', error);
-      setError(error.message || 'Failed to complete encounter');
+      const msg = friendlyError(error);
+      setError(msg);
+      notify.error(msg, {
+        title: 'Could not save encounter',
+        action: { label: 'Retry', onClick: () => completeEncounter() },
+      });
     } finally {
       setLoading(false);
     }
@@ -842,9 +941,21 @@ const NewEncounter = () => {
               disabled={recording.isRecording}
             >
               <DevicesIcon />
-              Record from connected device
+              Record via Bluetooth
             </button>
-            <span className="record-hint">Streams 10s from the Saka stethoscope over Bluetooth</span>
+            <button
+              type="button"
+              className="btn-record btn-record-device"
+              onClick={recordFromDeviceWifi}
+              disabled={recording.isRecording}
+            >
+              <DevicesIcon />
+              Record via WiFi
+            </button>
+            <span className="record-hint">
+              Streams 10s from the Saka stethoscope. Bluetooth works on the live site;
+              WiFi (ws://device-ip) requires running the dashboard locally over http.
+            </span>
           </div>
         </div>
 

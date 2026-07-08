@@ -80,3 +80,74 @@
   --transition: 0.2s ease;
   --transition-slow: 0.3s ease;
 }
+
+/* ============================================================
+   NOTIFICATION TOASTS (human-centered feedback)
+   ============================================================ */
+.toast-viewport {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-left: 4px solid #9ca3af;
+  animation: toast-in 0.18s ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.toast-success { border-left-color: #10b981; }
+.toast-error   { border-left-color: #ef4444; }
+.toast-warning { border-left-color: #f59e0b; }
+.toast-info    { border-left-color: #3b82f6; }
+.toast-loading { border-left-color: #6366f1; }
+.toast-icon { font-size: 1.1rem; line-height: 1.4; flex-shrink: 0; }
+.toast-spin { animation: toast-spin 1s linear infinite; display: inline-block; }
+@keyframes toast-spin { to { transform: rotate(360deg); } }
+.toast-body { flex: 1; min-width: 0; }
+.toast-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 2px; }
+.toast-message { font-size: 0.88rem; line-height: 1.4; }
+.toast-detail { font-size: 0.78rem; color: #6b7280; margin-top: 4px; word-break: break-word; }
+.toast-action {
+  margin-top: 8px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.toast-close {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+.toast-close:hover { color: #4b5563; }
+
+@media (prefers-color-scheme: dark) {
+  .toast { background: #1f2937; color: #f3f4f6; }
+  .toast-detail { color: #9ca3af; }
+}
