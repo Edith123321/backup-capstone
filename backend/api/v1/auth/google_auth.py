@@ -191,3 +191,70 @@ def test_env():
         "JWT_SECRET": JWT_SECRET[:10] + "..." if JWT_SECRET else "Not Set",
         "all_set": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET),
     })
+
+
+# =========================
+# SESSION ENDPOINTS (verify / user / refresh / logout)
+# =========================
+# The frontend (frontend_web/src/services/auth.js) calls these after login to
+# validate the stored token, fetch the user, refresh on 401, and log out. They
+# were previously only defined in the UNREGISTERED api/v1/auth/google.py, so all
+# four 404'd in production. They are implemented here on the registered
+# blueprint, using the same JWT scheme as /google/callback above. CORS/OPTIONS
+# are handled globally by flask-cors in app.py.
+def _decode_bearer():
+    """Return (payload, error_tuple). error_tuple is (message, status) or None."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, ("Missing or invalid Authorization header", 401)
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload, None
+    except jwt.ExpiredSignatureError:
+        return None, ("Token expired", 401)
+    except jwt.InvalidTokenError:
+        return None, ("Invalid token", 401)
+
+
+@auth_bp.route("/verify", methods=["GET"])
+def verify():
+    """Verify the JWT and echo back the user claims."""
+    payload, err = _decode_bearer()
+    if err:
+        return jsonify({"authenticated": False, "error": err[0]}), err[1]
+    return jsonify({"authenticated": True, "user": payload})
+
+
+@auth_bp.route("/user", methods=["GET"])
+def get_user():
+    """Return the current user's claims from a valid token."""
+    payload, err = _decode_bearer()
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    return jsonify({"user": payload})
+
+
+@auth_bp.route("/refresh", methods=["POST"])
+def refresh():
+    """Issue a fresh token from a still-valid one (frontend calls this on 401)."""
+    payload, err = _decode_bearer()
+    if err:
+        return jsonify({"error": err[0]}), err[1]
+    new_token = jwt.encode(
+        {
+            "email": payload.get("email"),
+            "name": payload.get("name", ""),
+            "picture": payload.get("picture", ""),
+            "exp": datetime.utcnow() + timedelta(days=1),
+        },
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return jsonify({"token": new_token})
+
+
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    """Stateless-JWT logout: the client drops the token; this just acknowledges."""
+    return jsonify({"message": "Logged out successfully"})
