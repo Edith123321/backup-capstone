@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 # =========================
 from api.v1.screening.heart_sound import heart_sound_bp
 from api.v1.screening.database_routes import database_bp
-from api.v1.screening.validation import validation_bp
 from api.v1.screening.encounter_routes import encounter_bp
 from api.v1.auth.google_auth import auth_bp
 from api.v1.auth.test_auth import test_auth_bp
@@ -108,7 +107,6 @@ CORS(
 # =========================
 # Screening endpoints
 app.register_blueprint(heart_sound_bp, url_prefix="/api/v1/screening")
-app.register_blueprint(validation_bp, url_prefix="/api/v1/screening")
 app.register_blueprint(encounter_bp, url_prefix="/api/v1")
 
 # Database endpoints
