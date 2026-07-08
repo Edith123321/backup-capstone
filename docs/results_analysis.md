@@ -55,9 +55,9 @@ result would have been unachievable on the target hardware.
 
 | Proposal scope item | Delivered? |
 |---------------------|-----------|
-| ESP32-based IoT acquisition hardware | ✅ Firmware + BLE/WebSocket; physical build + CAD are hardware deliverables |
-| React-based dashboard MVP | ✅ Screening wizard, triage, longitudinal history, reports |
-| ML pipeline (mitral-valve focus) | ✅ Trained RF on mitral-valve dataset |
+| ESP32-based IoT acquisition hardware | Firmware + BLE/WebSocket; physical build + CAD are hardware deliverables |
+| React-based dashboard MVP |  Screening wizard, triage, longitudinal history, reports |
+| ML pipeline (mitral-valve focus) |  Trained RF on mitral-valve dataset |
 | Gisozi pilot: ~100 screenings, 6–10 clinicians, echo validation | ⏳ Field activity — not a code artifact; enables the RQ2 WHF linkage |
 
 ## 6. Summary
