@@ -160,9 +160,15 @@ api.interceptors.request.use(
 // =====================
 // RESPONSE HANDLER WITH OFFLINE SUPPORT
 // =====================
+// Statuses returned by Render's edge while a spun-down service boots.
+const COLD_START_STATUSES = new Set([502, 503, 504]);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const config = error.config;
+
     // Handle 401 Unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
@@ -170,35 +176,47 @@ api.interceptors.response.use(
       window.location.href = '/login';
       return Promise.reject(error);
     }
-    
-    // Handle network errors (offline)
-    if (!error.response && error.message === 'Network Error') {
-      console.warn('🌐 Network error - adding to offline queue');
-      
-      // Add failed request to offline queue
-      if (error.config) {
-        await offlineQueue.addRequest({
-          method: error.config.method?.toUpperCase() || 'GET',
-          url: error.config.url,
-          data: error.config.data,
-          headers: error.config.headers,
-          params: error.config.params
-        });
-        
-        // Return a special response for queued requests
-        return Promise.resolve({
-          data: {
-            queued: true,
-            offline: true,
-            message: 'Request queued for offline processing',
-            queueId: Date.now()
-          },
-          status: 202,
-          statusText: 'Accepted - Queued'
-        });
+
+    // --- Cold-start resilience (Render free tier) ---
+    // A spun-down backend answers the first request with a 502/503/504 (or the
+    // request fails at the network layer, which the browser also reports for a
+    // CORS-blocked response). Retry a few times with backoff before giving up.
+    const status = error.response?.status;
+    const isColdStart = !error.response || COLD_START_STATUSES.has(status);
+    if (isColdStart && config && !config.__noRetry) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      if (config.__retryCount <= 3) {
+        await sleep(2000 * config.__retryCount);
+        return api(config);
       }
     }
-    
+
+    // --- Offline queue (only for requests we can actually replay) ---
+    // FormData/file uploads CANNOT be serialized to the queue — replaying them
+    // sends an empty body and 400s. Only queue plain (JSON/GET) requests.
+    const isFileUpload =
+      typeof FormData !== 'undefined' && config?.data instanceof FormData;
+    if (!error.response && error.message === 'Network Error' && config && !isFileUpload) {
+      console.warn('🌐 Network error - adding to offline queue');
+      await offlineQueue.addRequest({
+        method: config.method?.toUpperCase() || 'GET',
+        url: config.url,
+        data: config.data,
+        headers: config.headers,
+        params: config.params,
+      });
+      return Promise.resolve({
+        data: {
+          queued: true,
+          offline: true,
+          message: 'Request queued for offline processing',
+          queueId: Date.now(),
+        },
+        status: 202,
+        statusText: 'Accepted - Queued',
+      });
+    }
+
     return Promise.reject(error);
   }
 );
@@ -243,30 +261,23 @@ export const screeningService = {
       formData.append('severity_label', options.severity_label);
     }
 
+    // A heart-sound file cannot be persisted to the offline queue, so we don't
+    // queue it. The interceptor retries cold-start 502/503/504s automatically;
+    // if it still fails we surface a clear, actionable error to the caller.
     try {
       const res = await api.post('/screening/predict', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        // Add timeout for large files
-        timeout: 60000, // 60 seconds
+        timeout: 90000, // 90s — covers a cold-start wake-up + inference
       });
       return res.data;
     } catch (error) {
-      // If offline, queue the request
-      if (!navigator.onLine || error.message === 'Network Error') {
-        console.warn('📱 Offline - queuing prediction request');
-        await offlineQueue.addRequest({
-          method: 'POST',
-          url: '/screening/predict',
-          data: formData,
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        return {
-          queued: true,
-          offline: true,
-          message: 'Prediction queued for offline processing'
-        };
-      }
-      throw error;
+      const friendly =
+        !error.response
+          ? 'Could not reach the analysis server (it may be waking up). Please try again in a moment.'
+          : (error.response?.data?.error || `Analysis failed (HTTP ${error.response.status})`);
+      const wrapped = new Error(friendly);
+      wrapped.cause = error;
+      throw wrapped;
     }
   },
 
@@ -615,6 +626,24 @@ export const databaseApi = {
 
   getSeverityTrend: async (patientId) => {
     const res = await api.get(`/database/severity/trend/${patientId}`);
+    return res.data;
+  },
+
+  // ---- Follow-up reminders (backend: /database/follow-up/reminders) ----
+  // These were called by PatientProfile & TriageSection but never defined,
+  // throwing "getFollowUpReminders is not a function".
+  getFollowUpReminders: async (patientId) => {
+    const res = await api.get(`/database/follow-up/reminders/${patientId}`);
+    return res.data;
+  },
+
+  createFollowUpReminder: async (data) => {
+    const res = await api.post('/database/follow-up/reminders', data);
+    return res.data;
+  },
+
+  completeFollowUpReminder: async (reminderId) => {
+    const res = await api.put(`/database/follow-up/reminders/${reminderId}/complete`);
     return res.data;
   }
 };
