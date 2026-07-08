@@ -57,9 +57,9 @@ void setup() {
         DEBUG_PRINTLN("❌ FAILED");
     }
     
-    // Setup WiFi (optional - skip if not needed)
-    // setupWiFi();
-    
+    // Setup WiFi (station mode) — prints the device IP over serial on boot.
+    setupWiFi();
+
     // Setup WebSocket
     setupWebSocket();
     
@@ -111,11 +111,38 @@ void loop() {
 
 // ==================== WIFI SETUP ====================
 void setupWiFi() {
-    DEBUG_PRINT("Starting Access Point mode... ");
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_MODE_SSID, AP_MODE_PASSWORD);
-    DEBUG_PRINTF("AP started: %s\n", AP_MODE_SSID);
-    digitalWrite(LED_WIFI, HIGH);
+    // Station mode: join an existing router so the device and the dashboard
+    // laptop share a LAN (and the laptop keeps internet). Credentials are in
+    // Config.h (WIFI_STA_SSID / WIFI_STA_PASSWORD).
+    DEBUG_PRINTF("Connecting to WiFi \"%s\" ", WIFI_STA_SSID);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - start < (unsigned long)WIFI_TIMEOUT * 1000) {
+        delay(500);
+        DEBUG_PRINT(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        digitalWrite(LED_WIFI, HIGH);
+        String ip = WiFi.localIP().toString();
+        DEBUG_PRINTLN(" ✅");
+        DEBUG_PRINTF("📡 Device IP: %s\n", ip.c_str());
+        DEBUG_PRINTF("   WebSocket:  ws://%s/audio\n", ip.c_str());
+        DEBUG_PRINTF("   Register this IP (%s) in the dashboard.\n", ip.c_str());
+    } else {
+        // Fallback so the device is never unreachable: bring up its own hotspot.
+        DEBUG_PRINTLN(" ❌");
+        DEBUG_PRINTLN("⚠️ WiFi connect failed — starting AP hotspot fallback");
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(AP_MODE_SSID, AP_MODE_PASSWORD);
+        digitalWrite(LED_WIFI, HIGH);
+        String ip = WiFi.softAPIP().toString();
+        DEBUG_PRINTF("📡 AP \"%s\" (pw %s) IP: %s\n", AP_MODE_SSID, AP_MODE_PASSWORD, ip.c_str());
+        DEBUG_PRINTF("   Join that WiFi, then WebSocket: ws://%s/audio\n", ip.c_str());
+    }
 }
 
 // ==================== WEBSOCKET SETUP ====================

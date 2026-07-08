@@ -3,12 +3,15 @@ import React, { useState, useRef } from 'react';
 import { databaseApi } from '../../services/api';
 import { enqueueRequest } from '../../services/offlineQueue';
 import { useAuth } from '../../context/AuthContext';
+import { useNotify } from '../../context/NotificationContext';
+import { resilientFetch, friendlyError } from '../../services/resilientFetch';
 import './DashboardLayout.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://capstone-be-yxzd.onrender.com';
 
 const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSelectedPatient }) => {
   const { user } = useAuth();
+  const notify = useNotify();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -87,14 +90,18 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
     setSignalQuality(null);
     setBlocked(false);
 
+    const analyzingId = notify.loading('Analyzing heart sound…');
+    let coldStartId = null;
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const fd = new FormData();
+      fd.append('file', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/screening/predict`, {
-        method: 'POST',
-        body: formData
-      });
+      const response = await resilientFetch(
+        `${API_BASE_URL}/api/v1/screening/predict`,
+        { method: 'POST', body: fd },
+        { onRetry: () => { if (!coldStartId) coldStartId = notify.info('Server is waking up — retrying…', { title: 'Please wait', duration: 0 }); } }
+      );
+      if (coldStartId) notify.dismiss(coldStartId);
 
       const result = await response.json();
 
@@ -107,7 +114,9 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
       if (result.blocked) {
         setBlocked(true);
         setPrediction(null);
-        setPredictionError(result.error || result.signal_quality?.message || 'Recording could not be analysed.');
+        const msg = result.error || result.signal_quality?.message || 'Recording could not be analysed.';
+        setPredictionError(msg);
+        notify.warning(msg, { title: result.signal_quality?.title || 'Recording not gradeable', duration: 0 });
         return;
       }
 
@@ -119,19 +128,35 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           visualization: result.visualization
         });
 
-        // If RHD detected with high confidence, show alert
-        if (result.prediction === 'RHD' && result.confidence > 0.5) {
-          setPredictionError(`⚠️ RHD detected with ${(result.confidence * 100).toFixed(1)}% confidence`);
-        } else if (result.prediction === 'RHD') {
-          setPredictionError(`⚠️ RHD suspected with ${(result.confidence * 100).toFixed(1)}% confidence - Further review recommended`);
+        // Soft signal-quality warnings (noise / tachycardia / short).
+        (result.signal_quality?.warnings || []).forEach((w) =>
+          notify.warning(w.message, { title: w.title || 'Signal note' })
+        );
+
+        // If RHD detected, surface it clearly.
+        if (result.prediction === 'RHD') {
+          const pct = (result.confidence * 100).toFixed(1);
+          const text = result.confidence > 0.5
+            ? `RHD detected with ${pct}% confidence.`
+            : `RHD suspected with ${pct}% confidence — further review recommended.`;
+          setPredictionError(`⚠️ ${text}`);
+          notify.warning(text, { title: 'RHD analysis' });
+        } else {
+          notify.success('Analysis complete — normal heart sound.');
         }
       } else {
-        setPredictionError(result.error || 'Failed to analyze heart sound');
+        const msg = result.error || 'Failed to analyze heart sound';
+        setPredictionError(msg);
+        notify.error(msg, { title: 'Analysis failed' });
       }
     } catch (error) {
       console.error('Prediction error:', error);
-      setPredictionError('Failed to connect to prediction service');
+      if (coldStartId) notify.dismiss(coldStartId);
+      const msg = friendlyError(error);
+      setPredictionError(msg);
+      notify.error(msg, { title: 'Could not analyze', action: { label: 'Retry', onClick: () => analyzeHeartSound() } });
     } finally {
+      notify.dismiss(analyzingId);
       setIsPredicting(false);
     }
   };
@@ -240,7 +265,8 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
         setUploadProgress(100);
         setSuccess(true);
         setError('');
-        
+        notify.success('Recording uploaded successfully.');
+
         // Reset form after successful upload
         setFile(null);
         setPrediction(null);
@@ -263,14 +289,16 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           onClose();
         }, 3000);
       } else {
-        setError(response?.error || 'Failed to upload recording');
+        const msg = response?.error || 'Failed to upload recording';
+        setError(msg);
         setUploadProgress(0);
+        notify.error(msg, { title: 'Upload failed' });
       }
     } catch (err) {
       console.error('Upload error:', err);
       // Scenario 4 — Infrastructure Failure. If the network is down (or the
-      // request failed while offline), don't lose the nurse's work: queue the
-      // recording locally and reassure them it's saved.
+      // request failed while offline / the server is cold), don't lose the
+      // nurse's work: queue the recording locally and reassure them it's saved.
       const isNetworkFailure = !navigator.onLine || /network|failed to fetch/i.test(err.message || '');
       if (isNetworkFailure) {
         try {
@@ -290,6 +318,9 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           setError('');
           setPredictionError('💾 Saved locally. Prediction pending (waiting for internet). You can continue to the next patient.');
           setUploadProgress(100);
+          notify.info('Saved locally — will sync when the connection returns.', {
+            title: '💾 Offline', duration: 8000,
+          });
           if (onUploadComplete) onUploadComplete();
           setTimeout(() => onClose(), 3500);
           return;
@@ -297,8 +328,10 @@ const UploadHeartSound = ({ isOpen, onClose, onUploadComplete, patients, preSele
           console.error('Offline queue error:', queueErr);
         }
       }
-      setError(err.message || 'An error occurred. Please try again.');
+      const msg = friendlyError(err);
+      setError(msg);
       setUploadProgress(0);
+      notify.error(msg, { title: 'Upload failed', action: { label: 'Retry', onClick: () => handleSubmit(e) } });
     } finally {
       setLoading(false);
     }
