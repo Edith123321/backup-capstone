@@ -78,7 +78,18 @@ void setup() {
 void loop() {
     // Handle WebSocket clients
     webSocket.loop();
-    
+
+    // Apply any command received over BLE (START/STOP streaming).
+    uint8_t bleCmd = bleHandler.consumeCommand();
+    if (bleCmd == 1) {
+        isRecording = true;
+        lastAudioRead = millis();
+        DEBUG_PRINTLN("🎙️ BLE: recording started");
+    } else if (bleCmd == 2) {
+        isRecording = false;
+        DEBUG_PRINTLN("⏹️ BLE: recording stopped");
+    }
+
     // Process audio if recording
     if (isRecording) {
         processAudio();
@@ -119,11 +130,11 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t l
             webSocket.sendTXT(num, "{\"status\":\"connected\",\"device\":\"Saka Stethoscope\"}");
             break;
             
-        case WStype_TEXT:
-            // Parse JSON command
+        case WStype_TEXT: {
+            // Parse JSON command (braces scope the local vars — required in a switch)
             DynamicJsonDocument doc(512);
             DeserializationError error = deserializeJson(doc, (const char*)payload);
-            
+
             if (!error) {
                 String command = doc["command"];
                 String params = doc["params"];
@@ -132,6 +143,7 @@ void handleWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t l
                 DEBUG_PRINTF("JSON parse error: %s\n", error.c_str());
             }
             break;
+        }
             
         case WStype_BIN:
             // Binary data (audio stream)
