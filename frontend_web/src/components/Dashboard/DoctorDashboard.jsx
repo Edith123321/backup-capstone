@@ -17,6 +17,7 @@ import RecordingsView from './RecordingsView';
 import PatientProfile from './PatientProfile';
 import NewEncounter from './NewEncounter';
 import PatientHistory from '../Patient/PatientHistory';
+import OfflineBanner from '../Common/OfflineBanner';
 
 const DoctorDashboard = () => {
   const { user } = useAuth();
@@ -312,6 +313,8 @@ const DoctorDashboard = () => {
       
       {/* Main Content Area */}
       <div className="dashboard-content">
+        {/* Scenario 4 — offline / pending-sync status banner */}
+        <OfflineBanner />
         <div className="dashboard-container">
           {renderContent()}
         </div>

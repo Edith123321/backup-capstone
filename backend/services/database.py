@@ -6,25 +6,41 @@ import sqlite3
 from typing import Dict, List, Optional
 import uuid
 
+try:
+    import libsql  # Turso / libSQL client, used when TURSO_DATABASE_URL is set
+except ImportError:  # pragma: no cover - only needed for the Turso backend
+    libsql = None
+
+# `ALTER TABLE ... ADD COLUMN` on an existing column raises sqlite3.OperationalError
+# on the SQLite backend but ValueError on libSQL. Treat both as "already migrated".
+_DUPLICATE_COLUMN_ERRORS = (sqlite3.OperationalError, ValueError)
+
 class DoctorDatabase:
     """Database service for storing doctor information and predictions"""
     
     def __init__(self, db_path=None):
-        # Allow the DB location to be pointed at a persistent disk in production.
-        # On Render's free tier the container filesystem is ephemeral, so the
-        # default 'doctors.db' resets on cold start (losing created patients).
-        # Set DATABASE_PATH to a mounted disk (e.g. /var/data/doctors.db) to persist.
+        # Durable storage in production comes from Turso (libSQL): a cloud
+        # SQLite-compatible database that survives Render restarts. When
+        # TURSO_DATABASE_URL is unset we fall back to a local SQLite file for
+        # development and tests. (Render's free-tier filesystem is ephemeral, so
+        # a local file there would reset on every cold start.)
+        self.turso_url = os.environ.get('TURSO_DATABASE_URL')
+        self.turso_token = os.environ.get('TURSO_AUTH_TOKEN', '')
+        self.use_turso = bool(self.turso_url) and libsql is not None
+        if self.turso_url and libsql is None:
+            print("WARNING: TURSO_DATABASE_URL is set but the 'libsql' package is "
+                  "not installed; falling back to local SQLite (NOT durable).")
+
         self.db_path = db_path or os.environ.get('DATABASE_PATH', 'doctors.db')
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
+        if not self.use_turso:
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir, exist_ok=True)
         self.init_db()
     
     def init_db(self):
-        """Initialize database tables"""
-        # timeout= sets SQLite's busy handler so concurrent writers wait for the
-        # lock (up to 10s) instead of immediately failing with 'database is locked'.
-        conn = sqlite3.connect(self.db_path, timeout=10)
+        """Initialize database tables (idempotent) on whichever backend is active."""
+        conn = self._connect()
         cursor = conn.cursor()
         
         # Doctors table
@@ -171,83 +187,83 @@ class DoctorDatabase:
         # Add missing columns if they don't exist
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_status TEXT DEFAULT 'unknown'")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_diagnosis_date TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_treatment TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN rhd_notes TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE patients ADD COLUMN last_rhd_assessment TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         # Add severity and auscultation columns to heart_sound_recordings
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN severity_grade INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN severity_label TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN auscultation_point TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN auscultation_label TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN file_name TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN file_url TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN notes TEXT")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN recording_date TIMESTAMP")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE heart_sound_recordings ADD COLUMN analyzed_at TIMESTAMP")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         try:
             cursor.execute("ALTER TABLE triage_records ADD COLUMN triage_score INTEGER")
-        except sqlite3.OperationalError:
+        except _DUPLICATE_COLUMN_ERRORS:
             pass
         
         conn.commit()
@@ -273,13 +289,25 @@ class DoctorDatabase:
         except (ValueError, TypeError):
             return default
     
-    def get_connection(self):
-        """Get a database connection.
+    def _connect(self):
+        """Open a DB connection on the active backend.
 
-        timeout= sets SQLite's busy handler so concurrent writers wait for the
-        lock (up to 10s) instead of failing with 'database is locked'.
+        Turso/libSQL (pure-remote, durable) when TURSO_DATABASE_URL is set,
+        otherwise a local SQLite file. Both expose the same DB-API surface used
+        here: cursor/execute/fetch*/commit/close, ``?`` placeholders and
+        index-addressable tuple rows.
         """
+        if self.use_turso:
+            # Pure-remote: every statement commits straight to Turso, so data
+            # persists across Render restarts with no local file to lose.
+            return libsql.connect(database=self.turso_url, auth_token=self.turso_token)
+        # timeout= sets SQLite's busy handler so concurrent writers wait for the
+        # lock (up to 10s) instead of failing with 'database is locked'.
         return sqlite3.connect(self.db_path, timeout=10)
+
+    def get_connection(self):
+        """Get a database connection (Turso in production, SQLite locally)."""
+        return self._connect()
     
     # ============ DOCTOR METHODS ============
     
@@ -448,10 +476,13 @@ class DoctorDatabase:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Delete associated records first (cascade)
-            cursor.execute("DELETE FROM triage_records WHERE patient_id = ?", (patient_id,))
-            cursor.execute("DELETE FROM heart_sound_recordings WHERE patient_id = ?", (patient_id,))
+            # Delete children before parents so foreign-key constraints hold.
+            # severity_history references heart_sound_recordings, so it must go
+            # first. (SQLite leaves FKs off by default and tolerated the old
+            # order; Turso/libSQL enforces them and does not.)
             cursor.execute("DELETE FROM severity_history WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM heart_sound_recordings WHERE patient_id = ?", (patient_id,))
+            cursor.execute("DELETE FROM triage_records WHERE patient_id = ?", (patient_id,))
             cursor.execute("DELETE FROM follow_up_reminders WHERE patient_id = ?", (patient_id,))
             cursor.execute("DELETE FROM patients WHERE id = ?", (patient_id,))
             
