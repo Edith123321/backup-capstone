@@ -370,3 +370,65 @@
 2026-07-08 23:03:36,250 - app - INFO - 📤 POST /api/v1/auth/refresh - 401
 2026-07-08 23:03:36,250 - app - INFO - 📥 GET /api/v1/auth/test/generate - 127.0.0.1
 2026-07-08 23:03:36,250 - app - INFO - 📤 GET /api/v1/auth/test/generate - 200
+2026-07-09 01:08:46,943 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_ID present: True
+2026-07-09 01:08:46,943 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_SECRET present: True
+2026-07-09 01:08:46,944 - api.v1.auth.google_auth - INFO - REDIRECT_URI: https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback
+2026-07-09 01:08:46,944 - api.v1.auth.google_auth - INFO - FRONTEND_URL: https://backup-capstone-mbq6.onrender.com
+2026-07-09 01:08:47,266 - app - INFO - ✅ All services loaded successfully
+2026-07-09 01:08:47,294 - app - INFO - ✅ SAKA Blueprints registered successfully
+2026-07-09 01:08:49,930 - app - INFO - 📥 GET /api/v1/screening/health - 127.0.0.1
+2026-07-09 01:08:49,931 - app - INFO - 📤 GET /api/v1/screening/health - 200
+2026-07-09 01:08:49,941 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:08:51,484 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:08:51,505 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:08:52,846 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:08:52,869 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:08:54,217 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:09:14,991 - app - INFO - 📥 POST /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:09:17,135 - app - INFO - 📤 POST /api/v1/database/patients - 500
+2026-07-09 01:09:17,162 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:09:18,556 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:14:02,651 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_ID present: True
+2026-07-09 01:14:02,651 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_SECRET present: True
+2026-07-09 01:14:02,651 - api.v1.auth.google_auth - INFO - REDIRECT_URI: https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback
+2026-07-09 01:14:02,651 - api.v1.auth.google_auth - INFO - FRONTEND_URL: https://backup-capstone-mbq6.onrender.com
+2026-07-09 01:14:02,918 - app - INFO - ✅ All services loaded successfully
+2026-07-09 01:14:02,939 - app - INFO - ✅ SAKA Blueprints registered successfully
+2026-07-09 01:32:30,186 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_ID present: True
+2026-07-09 01:32:30,186 - api.v1.auth.google_auth - INFO - GOOGLE_CLIENT_SECRET present: True
+2026-07-09 01:32:30,186 - api.v1.auth.google_auth - INFO - REDIRECT_URI: https://capstone-be-yxzd.onrender.com/api/v1/auth/google/callback
+2026-07-09 01:32:30,187 - api.v1.auth.google_auth - INFO - FRONTEND_URL: https://backup-capstone-mbq6.onrender.com
+2026-07-09 01:32:30,447 - app - INFO - ✅ All services loaded successfully
+2026-07-09 01:32:30,467 - app - INFO - ✅ SAKA Blueprints registered successfully
+2026-07-09 01:32:30,469 - app - INFO - 📥 GET /api/v1/screening/health - 127.0.0.1
+2026-07-09 01:32:30,470 - app - INFO - 📤 GET /api/v1/screening/health - 200
+2026-07-09 01:32:30,485 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:30,486 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:31,818 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:31,941 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:33,260 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:33,384 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:35,108 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:35,228 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:35,229 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:36,477 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:38,028 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:39,390 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:39,391 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:40,741 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:40,744 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:40,747 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:43,483 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:43,485 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:43,487 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:44,879 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:44,882 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:46,463 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:46,467 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:48,473 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:48,475 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:48,476 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:49,848 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:51,286 - app - INFO - 📤 GET /api/v1/database/patients - 200
+2026-07-09 01:32:51,290 - app - INFO - 📥 GET /api/v1/database/patients - 127.0.0.1
+2026-07-09 01:32:52,823 - app - INFO - 📤 GET /api/v1/database/patients - 200
