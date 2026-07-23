@@ -412,9 +412,6 @@ class DoctorDatabase:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            # Turso enforces the doctor_id FK; make sure the doctor row exists.
-            self._ensure_doctor(conn, doctor_id)
-
             # Get RHD status or default to 'unknown'
             rhd_status = data.get('rhd_status', 'unknown')
             if rhd_status not in ['none', 'suspected', 'confirmed', 'unknown']:
